@@ -1,0 +1,43 @@
+name = "firewall-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-18"
+account_id = "02fab3c83f2f24ed8457a7575fe03150"
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "POLICY_CACHE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+
+[[kv_namespaces]]
+binding = "VERDICT_CACHE"
+id = "REPLACE_WITH_VERDICT_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_PREVIEW_VERDICT_KV_NAMESPACE_ID"
+
+[[kv_namespaces]]
+binding = "API_KEYS"
+id = "REPLACE_WITH_API_KEYS_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_PREVIEW_API_KEYS_KV_NAMESPACE_ID"
+
+[[vectorize]]
+binding = "FIREWALL_VECTORIZE"
+index_name = "ai-firewall-attacks"
+
+[durable_objects]
+bindings = [
+  { name = "RATE_LIMITER", class_name = "RateLimiter" },
+  { name = "KEY_REVOCATION", class_name = "KeyRevocation" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RateLimiter", "KeyRevocation"]
+
+[analytics_engine_datasets]
+binding = "ANALYTICS"
+dataset = "ai_firewall_events"
+
+[vars]
+ENVIRONMENT = "production"

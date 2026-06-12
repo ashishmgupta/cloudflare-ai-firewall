@@ -1,14 +1,13 @@
 {
   "name": "cloudflare-ai-firewall",
-  "version": "0.0.1",
   "private": true,
+  "workspaces": ["packages/*", "apps/*"],
   "scripts": {
-    "dev": "wrangler dev --remote",
-    "deploy": "wrangler deploy"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241218.0",
-    "typescript": "^5.5.2",
-    "wrangler": "^4.100.0"
+    "dev:firewall": "npm run dev -w apps/firewall-api",
+    "dev:manager": "npm run dev -w apps/policy-manager",
+    "deploy:firewall": "npm run deploy -w apps/firewall-api",
+    "deploy:manager": "npm run deploy -w apps/policy-manager",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   }
 }

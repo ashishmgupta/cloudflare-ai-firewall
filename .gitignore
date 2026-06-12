@@ -4,3 +4,4 @@ dist/
 creds
 .env
 *.env
+*.local

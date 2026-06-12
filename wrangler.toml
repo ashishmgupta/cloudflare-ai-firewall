@@ -1,7 +1,0 @@
-name = "cloudflare-ai-firewall"
-main = "src/index.ts"
-compatibility_date = "2024-12-18"
-account_id = "02fab3c83f2f24ed8457a7575fe03150"
-
-[ai]
-binding = "AI"
