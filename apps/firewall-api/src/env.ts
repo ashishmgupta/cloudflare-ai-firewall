@@ -3,9 +3,9 @@ export interface Env {
   POLICY_CACHE: KVNamespace;
   VERDICT_CACHE: KVNamespace;
   API_KEYS: KVNamespace;
-  FIREWALL_VECTORIZE: VectorizeIndex;
+  FIREWALL_VECTORIZE?: VectorizeIndex;
   RATE_LIMITER: DurableObjectNamespace;
   KEY_REVOCATION: DurableObjectNamespace;
-  ANALYTICS: AnalyticsEngineDataset;
+  ANALYTICS?: AnalyticsEngineDataset;
   ENVIRONMENT: string;
 }

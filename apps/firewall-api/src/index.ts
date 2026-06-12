@@ -65,7 +65,8 @@ app.post('/v1/inspect', authMiddleware, rateLimitMiddleware, async c => {
   }
 
   // Sync mode
-  const verdict = await runPipeline(req, policy, c.env, c.executionCtx, requestId);
+  const bypassCache = c.req.header('X-Bypass-Cache') === '1';
+  const verdict = await runPipeline(req, policy, c.env, c.executionCtx, requestId, bypassCache);
   const status = verdict.verdict === 'block' ? 403 : 200;
   return c.json(verdict, status);
 });

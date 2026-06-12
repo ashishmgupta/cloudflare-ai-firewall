@@ -7,7 +7,7 @@ export async function checkLayer2Vector(
   policy: Policy,
   env: Env,
 ): Promise<Violation | null> {
-  if (!policy.layers.layer2.enabled) return null;
+  if (!policy.layers.layer2.enabled || !env.FIREWALL_VECTORIZE) return null;
 
   const threshold = policy.layers.layer2.similarityThreshold;
 
@@ -19,7 +19,7 @@ export async function checkLayer2Vector(
   const vector = (embedResult as { data: number[][] }).data[0];
   if (!vector) return null;
 
-  const queryResult = await env.FIREWALL_VECTORIZE.query(vector, {
+  const queryResult = await env.FIREWALL_VECTORIZE!.query(vector, {
     topK: 5,
     returnMetadata: 'all',
   });

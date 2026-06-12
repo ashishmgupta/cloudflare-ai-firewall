@@ -38,6 +38,7 @@ export async function runPipeline(
   env: Env,
   ctx: ExecutionContext,
   requestId: string,
+  bypassCache = false,
 ): Promise<InspectResponse> {
   const startTime = Date.now();
   const perLayer: Record<string, number> = {};
@@ -56,7 +57,7 @@ export async function runPipeline(
   const normalizedHash = await hashPrompt(req.prompt);
   const cacheKey = `${normalizedHash}:${policy.id}`;
 
-  const cachePromise = policy.layers.layer1.enabled
+  const cachePromise = policy.layers.layer1.enabled && !bypassCache
     ? checkLayer1Cache(cacheKey, env)
     : Promise.resolve(null);
 
@@ -165,7 +166,7 @@ async function emitAnalytics(
   env: Env,
 ): Promise<void> {
   try {
-    env.ANALYTICS.writeDataPoint({
+    env.ANALYTICS?.writeDataPoint({
       blobs: [response.requestId, policy.id, response.verdict],
       doubles: [response.score, response.latencyMs.total],
       indexes: [policy.tenantId],

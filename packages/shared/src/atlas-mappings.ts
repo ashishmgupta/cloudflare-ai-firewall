@@ -52,6 +52,8 @@ export const DEFAULT_LLM_ATLAS: Record<string, string> = {
   S12: 'AML.T0048',
   S13: 'AML.T0048',
   S14: 'AML.T0043',
+  S15: 'AML.T0051',
+  S16: 'AML.T0054',
 };
 
 export const LLM_CATEGORY_NAMES: Record<string, string> = {
@@ -69,4 +71,6 @@ export const LLM_CATEGORY_NAMES: Record<string, string> = {
   S12: 'Sexual Content',
   S13: 'Elections',
   S14: 'Code Interpreter Abuse',
+  S15: 'Prompt Injection',
+  S16: 'Jailbreak Attempt',
 };

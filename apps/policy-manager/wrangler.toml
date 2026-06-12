@@ -9,18 +9,15 @@ binding = "AI"
 # Shared KV namespaces with firewall-api (same IDs)
 [[kv_namespaces]]
 binding = "POLICY_CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+id = "7fbf19505d334e2ca23e40a36b1f6884"
 
 [[kv_namespaces]]
 binding = "API_KEYS"
-id = "REPLACE_WITH_API_KEYS_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_API_KEYS_KV_NAMESPACE_ID"
+id = "f4718fea68a749afa907603c771c542c"
 
 [[kv_namespaces]]
 binding = "TENANTS"
-id = "REPLACE_WITH_TENANTS_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_TENANTS_KV_NAMESPACE_ID"
+id = "ea406e8b13a74b558e38435cdc10b00f"
 
 [[r2_buckets]]
 binding = "POLICY_STORE"
@@ -29,10 +26,6 @@ bucket_name = "ai-firewall-policies"
 [[r2_buckets]]
 binding = "AUDIT_LOG"
 bucket_name = "ai-firewall-audit"
-
-[[vectorize]]
-binding = "FIREWALL_VECTORIZE"
-index_name = "ai-firewall-attacks"
 
 [vars]
 ENVIRONMENT = "production"

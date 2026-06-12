@@ -2,13 +2,15 @@ import type { Context, Next } from 'hono';
 import type { Policy, ApiKeyRecord } from '@firewall/shared';
 import type { Env } from '../env.js';
 
+// Hard ceiling applied to every key regardless of policy configuration
+const GLOBAL_RPM_CAP = 60;
+
 export async function rateLimitMiddleware(c: Context<{ Bindings: Env }>, next: Next) {
   const keyRecord = c.get('keyRecord' as never) as ApiKeyRecord;
   const policy = c.get('policy' as never) as Policy;
 
-  if (!policy.rateLimit) return next();
-
-  const { requestsPerMinute, requestsPerHour } = policy.rateLimit;
+  const requestsPerMinute = policy.rateLimit?.requestsPerMinute ?? GLOBAL_RPM_CAP;
+  const requestsPerHour = policy.rateLimit?.requestsPerHour ?? undefined;
   const doId = c.env.RATE_LIMITER.idFromName(keyRecord.id);
   const stub = c.env.RATE_LIMITER.get(doId);
 

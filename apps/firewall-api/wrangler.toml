@@ -8,22 +8,15 @@ binding = "AI"
 
 [[kv_namespaces]]
 binding = "POLICY_CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+id = "7fbf19505d334e2ca23e40a36b1f6884"
 
 [[kv_namespaces]]
 binding = "VERDICT_CACHE"
-id = "REPLACE_WITH_VERDICT_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_VERDICT_KV_NAMESPACE_ID"
+id = "08bdcede02144671a84b46fb7bd1881f"
 
 [[kv_namespaces]]
 binding = "API_KEYS"
-id = "REPLACE_WITH_API_KEYS_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_API_KEYS_KV_NAMESPACE_ID"
-
-[[vectorize]]
-binding = "FIREWALL_VECTORIZE"
-index_name = "ai-firewall-attacks"
+id = "f4718fea68a749afa907603c771c542c"
 
 [durable_objects]
 bindings = [
@@ -33,11 +26,7 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["RateLimiter", "KeyRevocation"]
-
-[analytics_engine_datasets]
-binding = "ANALYTICS"
-dataset = "ai_firewall_events"
+new_sqlite_classes = ["RateLimiter", "KeyRevocation"]
 
 [vars]
 ENVIRONMENT = "production"
