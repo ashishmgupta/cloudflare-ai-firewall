@@ -26,3 +26,6 @@ new_sqlite_classes = ["RateLimiter", "KeyRevocation"]
 
 [vars]
 ENVIRONMENT = "production"
+
+[observability]
+enabled = true

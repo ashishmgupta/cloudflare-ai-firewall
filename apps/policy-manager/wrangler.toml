@@ -22,4 +22,7 @@ bucket_name = "ai-firewall-audit"
 [vars]
 ENVIRONMENT = "production"
 
+[observability]
+enabled = true
+
 # Store admin token as a secret: wrangler secret put ADMIN_TOKEN

@@ -44,25 +44,45 @@ export async function checkLayer3Llm(
 ): Promise<Violation[]> {
   const systemPrompt = buildSystemPrompt(activeDetections);
 
-  console.log('[layer3] calling llama-3.1-8b-instruct, detections:', activeDetections.length);
+  console.log('[layer3] ── SYSTEM PROMPT ──────────────────────────────────────');
+  console.log(systemPrompt);
+  console.log('[layer3] ── USER PROMPT ────────────────────────────────────────');
+  console.log(prompt.slice(0, 200));
+  console.log('[layer3] ────────────────────────────────────────────────────────');
 
-  const result = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+  const result = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt },
     ],
     max_tokens: 512,
-  }) as { response: string };
+  }) as Record<string, unknown>;
 
-  const raw = (result.response ?? '').trim();
-  console.log('[layer3] raw response:', raw.slice(0, 300));
+  const r = result as Record<string, unknown>;
+  console.log('[layer3] result type:', typeof r, 'keys:', Object.keys(r ?? {}));
 
-  // Strip markdown fences if the model adds them despite instructions
-  const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  // llama-3.3-70b-instruct-fp8-fast returns { response: <object>, tool_calls, usage }
+  // where response is already the parsed JSON — pass it directly to Zod.
+  // Older models return { response: <string> } or a bare string — parse those.
+  let jsonToParse: unknown;
+  if (r?.response !== null && typeof r?.response === 'object') {
+    jsonToParse = r.response;
+  } else {
+    const raw = (
+      typeof r === 'string' ? r as unknown as string :
+      typeof r?.response === 'string' ? r.response as string :
+      typeof r?.text === 'string' ? r.text as string :
+      JSON.stringify(r)
+    ).trim();
+    console.log('[layer3] raw response:', raw.slice(0, 300));
+    const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    jsonToParse = JSON.parse(jsonStr);
+  }
+  console.log('[layer3] jsonToParse:', JSON.stringify(jsonToParse).slice(0, 300));
 
   let parsed;
   try {
-    parsed = ModelOutputSchema.parse(JSON.parse(jsonStr));
+    parsed = ModelOutputSchema.parse(jsonToParse);
   } catch (err) {
     console.error('[layer3] parse error:', err);
     return [];

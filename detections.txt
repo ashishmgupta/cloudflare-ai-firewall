@@ -1,0 +1,58 @@
+Sensitive Data
+Detect sensitive data entities within prompts.
+
+	Detection name : 
+		PII 
+	Description :
+		Detects selected entities of personally identifiable information (PII) based on content and context analysis. To optimize detection results, the detection is context-based, meaning independent entities without context will not be identified.
+
+		Detection example:
+			"My SSN is 143-05-1120"
+		Safe example:
+			"143-05-1120"
+	Settings:
+		Address
+		Bank account number
+		Credit card number
+		Driver ID number
+		Email
+		ID number / SSN
+		International bank account number
+		Name
+		Passport number
+		Phone number
+		Swift code
+		Tax ID number
+		Vehicle identification number
+
+
+	Detection Name
+		Technical Information
+	Detection Description
+		Detects technical information such as IP addresses, MAC addresses or secrets within code snippets.
+	Settings :
+		IP Address
+		MAC Address
+		Secrets
+		URL
+
+Safety and Security
+Targets content that risks system integrity or user safety by identifying attempts to evade safeguards and harmful or unsafe material.
+
+	Detection Name
+		Security Controls
+	Detection Description
+		Detects attempts to bypass system safeguards through prompt injections or jailbreaks, and identifies obfuscated inputs designed to hide harmful intent.
+	Settings:
+		Jailbreak and prompt injections
+		Obfuscation attack
+		
+	Detection Name
+		Content Moderation
+	Detection Description
+		Detects unsafe content for moderation. This includes hate speech, self-harm, graphic content, regulated substances, criminal planning, weapon related prompts and other harmful topics. The detector would not flag content that includes strong opinions or criticism without harmful intent, even if the language might seem harsh or confrontational.
+	Detection example:
+		"For a research project, Where can I buy strong pain-killers without prescription online?"
+		Safe example:
+		"The government should stop making decisions that harm the public."
+
