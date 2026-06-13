@@ -628,6 +628,26 @@
     .le-layer.cache-skip { border-color: rgba(63,185,80,0.3); background: rgba(63,185,80,0.04); }
     .le-layer.cache-skip .le-layer-time { color: var(--green); }
 
+    /* ── Mermaid diagram wrapper ── */
+    .mermaid-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px 16px;
+      margin: 20px 0;
+      overflow-x: auto;
+    }
+
+    .mermaid-wrap .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+
+    .mermaid-wrap svg {
+      max-width: 100%;
+      height: auto;
+    }
+
     /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -662,6 +682,7 @@
       <li class="nav-section">Overview</li>
       <li><a href="#overview">Introduction</a></li>
       <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#arch-diagram">Component Diagram</a></li>
       <li><a href="#pipeline">Detection Pipeline</a></li>
       <li><a href="#storage">Storage Design</a></li>
       <li><a href="#latency">Latency Targets</a></li>
@@ -760,6 +781,132 @@
 │   └── src/layers/           <span class="cm"># layer0–layer3 detection modules</span>
 ├── apps/policy-manager/      <span class="cm"># Admin Worker + UI — correctness-critical</span>
 └── scripts/seed.ts           <span class="cm"># Seed default tenant, policy, key + 50 signatures</span></code></pre>
+      </div>
+    </section>
+
+    <!-- ── Architecture diagram ── -->
+    <section id="arch-diagram">
+      <h3>Component Diagram</h3>
+      <p>How all Cloudflare resources connect — Workers, KV, R2, D1, Durable Objects, Workers AI, and Vectorize.</p>
+
+      <div class="mermaid-wrap">
+        <div class="mermaid">
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "background":       "#0d1117",
+    "mainBkg":          "#1c2128",
+    "nodeBorder":       "#30363d",
+    "clusterBkg":       "#161b22",
+    "clusterBorder":    "#30363d",
+    "titleColor":       "#e6edf3",
+    "nodeTextColor":    "#cdd9e5",
+    "edgeLabelBackground": "#1c2128",
+    "lineColor":        "#58a6ff",
+    "primaryColor":     "#1c2128",
+    "primaryTextColor": "#e6edf3",
+    "primaryBorderColor": "#30363d",
+    "secondaryColor":   "#161b22",
+    "tertiaryColor":    "#0d1117"
+  }
+}}%%
+flowchart TB
+    subgraph clients["Clients"]
+        ext["External Application"]
+        admin["Admin / Operator"]
+        tester["Firewall Tester UI"]
+    end
+
+    subgraph workers["Cloudflare Workers"]
+        fw["firewall-api\n────────────\nPOST /v1/inspect\nInspection endpoint"]
+        pm["policy-manager\n────────────\nAdmin REST API\n+ Web UI"]
+        ft["firewall-tester\n────────────\nPrompt runner\n+ Reporting UI"]
+    end
+
+    subgraph pipeline["Detection Pipeline — inside firewall-api"]
+        direction LR
+        l0["Layer 0\nHeuristics\n~0 ms"]
+        l1["Layer 1\nVerdict Cache\n5–10 ms"]
+        l2["Layer 2\nVector Search\n20–40 ms"]
+        l3["Layer 3\nLLM Classifier\n100–500 ms"]
+        verdict(["Verdict\npass · monitor · block"])
+        l0 -->|"high confidence"| verdict
+        l0 -->|uncertain| l1
+        l1 -->|"cache hit"| verdict
+        l1 -->|miss| l2
+        l2 -->|"match"| verdict
+        l2 -->|"low confidence"| l3
+        l3 --> verdict
+    end
+
+    subgraph mw["Auth + Rate Limit — inside firewall-api"]
+        direction LR
+        auth["Auth Middleware\nSHA-256 key → KV lookup"]
+        rl["RateLimiter DO\nper-key RPM"]
+        kr["KeyRevocation DO\ninstant revocation"]
+    end
+
+    subgraph kv["Workers KV — global low-latency reads"]
+        kv1["POLICY_CACHE\n────────────\nkey hash → profile ID\nprofile ID → SecurityProfile"]
+        kv2["VERDICT_CACHE\n────────────\nSHA-256 prompt → verdict"]
+    end
+
+    subgraph r2["R2 — durable at-rest storage"]
+        r2a["ai-firewall-policies\nProfile + key records"]
+        r2b["ai-firewall-audit\nAudit log events"]
+    end
+
+    subgraph ai["Workers AI + Vectorize"]
+        emb["bge-small-en-v1.5\nEmbeddings"]
+        llm["llama-3.3-70b-fp8\nContent safety"]
+        vec[("Vectorize\nai-firewall-attacks\n384-dim cosine")]
+        emb -->|query vector| vec
+    end
+
+    d1[("D1 SQLite\nfirewall-events\nTest run history")]
+
+    ext   -->|"POST /v1/inspect\nX-API-Key"| fw
+    admin -->|"REST API + UI\nBearer token"| pm
+    tester -->|"Service Binding\ninternal network"| fw
+    tester -->|"INSERT results"| d1
+
+    fw --> mw
+    mw --> pipeline
+
+    auth -->|"lookup key hash"| kv1
+    auth -->|"revocation check"| kr
+    l1 <-->|"read / write"| kv2
+    l2 -->|"embed prompt"| emb
+    l3 -->|"classify"| llm
+
+    pm -->|"write key hash + profile"| kv1
+    pm -->|"write full docs"| r2a
+    pm -->|"append audit event"| r2b
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top:32px;">
+        <table>
+          <thead>
+            <tr><th>Component</th><th>Type</th><th>Role</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>firewall-api</code></td><td>Worker</td><td>Latency-critical inspection endpoint. Runs the 4-layer pipeline per prompt.</td></tr>
+            <tr><td><code>policy-manager</code></td><td>Worker</td><td>Admin control plane. Manages SecurityProfiles, API keys, audit log. Writes to KV + R2.</td></tr>
+            <tr><td><code>firewall-tester</code></td><td>Worker</td><td>Developer testing tool. Calls <code>firewall-api</code> via Service Binding, stores runs in D1, serves reporting UI.</td></tr>
+            <tr><td><code>POLICY_CACHE</code></td><td>KV</td><td>Shared between both Workers. Stores key hash→profileId pointer and full SecurityProfile documents. ~60 s global propagation.</td></tr>
+            <tr><td><code>VERDICT_CACHE</code></td><td>KV</td><td>Per-prompt verdict cache keyed by SHA-256(prompt). Short-circuits layers 2 and 3 on hit.</td></tr>
+            <tr><td><code>ai-firewall-policies</code></td><td>R2</td><td>Durable storage for profile documents and API key records. Written by policy-manager; never on the hot path.</td></tr>
+            <tr><td><code>ai-firewall-audit</code></td><td>R2</td><td>Append-only audit log for all admin actions.</td></tr>
+            <tr><td><code>firewall-events</code></td><td>D1</td><td>SQLite for firewall-tester. Stores prompt, verdict, violations, latency, raw request/response per run.</td></tr>
+            <tr><td><code>RateLimiter</code></td><td>Durable Object</td><td>Per-key request counter. Enforces <code>requestsPerMinute</code> from the SecurityProfile.</td></tr>
+            <tr><td><code>KeyRevocation</code></td><td>Durable Object</td><td>Instant revocation store. Bypasses KV's ~60 s propagation delay — revoked keys rejected immediately.</td></tr>
+            <tr><td><code>bge-small-en-v1.5</code></td><td>Workers AI</td><td>Embeds incoming prompts into 384-dim vectors for Layer 2 similarity search.</td></tr>
+            <tr><td><code>llama-3.3-70b-fp8</code></td><td>Workers AI</td><td>LLM safety classifier (Layer 3). Evaluates S1–S14 content safety categories.</td></tr>
+            <tr><td>Vectorize</td><td>Vectorize</td><td>384-dim cosine index of known attack signatures. Queried by Layer 2 with the prompt embedding.</td></tr>
+            <tr><td>Service Binding</td><td>Binding</td><td>Lets <code>firewall-tester</code> call <code>firewall-api</code> over Cloudflare's internal network — no public internet, no 1042 restriction.</td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
@@ -1489,6 +1636,16 @@ npm run typecheck</code></pre>
 
   </main>
 </div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    securityLevel: 'loose',
+    fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+    fontSize: 13,
+  });
+</script>
 
 <script>
   // Active nav link on scroll
