@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { CreateApiKeySchema } from '@firewall/shared';
 import type { ApiKeyRecord } from '@firewall/shared';
+import { R2_PREFIX } from '@firewall/shared';
 import type { Env } from '../env.js';
-import { putApiKey, deleteApiKey, getApiKeyByHash } from '../storage/kv.js';
-import { appendAuditLog } from '../storage/r2.js';
+import { putApiKeyPointer, deleteApiKeyPointer, putApiKeyRecord, deleteApiKeyRecord } from '../storage/kv.js';
+import { r2GetJson, r2ListKeys, appendAuditLog } from '../storage/r2.js';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -17,109 +18,110 @@ function generateRawKey(): string {
   return 'fw_' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// List all API key records for a tenant
-app.get('/tenant/:tenantId', async c => {
-  const list = await c.env.API_KEYS.list({ prefix: 'apikey:' });
+app.get('/', async c => {
+  const keys = await r2ListKeys(c.env.POLICY_STORE, R2_PREFIX.APIKEYS);
   const records: ApiKeyRecord[] = [];
-  for (const key of list.keys) {
-    const raw = await c.env.API_KEYS.get(key.name);
-    if (raw) {
-      const rec = JSON.parse(raw) as ApiKeyRecord;
-      if (rec.tenantId === c.req.param('tenantId')) records.push(rec);
-    }
+  for (const key of keys) {
+    const r = await r2GetJson<ApiKeyRecord>(c.env.POLICY_STORE, key);
+    if (r) records.push({ ...r, keyHash: '[redacted]' } as ApiKeyRecord);
   }
   return c.json(records);
 });
 
-// Create a new API key — raw key returned ONCE
 app.post('/', async c => {
   const parsed = CreateApiKeySchema.safeParse(await c.req.json());
-  if (!parsed.success) return c.json({ error: 'Validation error', details: parsed.error.flatten() }, 400);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation error', details: parsed.error.flatten() }, 400);
+  }
 
   const rawKey = generateRawKey();
   const keyHash = await sha256Hex(rawKey);
+  const now = new Date().toISOString();
 
   const record: ApiKeyRecord = {
     id: crypto.randomUUID(),
-    keyHash,
-    tenantId: parsed.data.tenantId,
     name: parsed.data.name,
-    policyIds: parsed.data.policyIds,
-    defaultPolicyId: parsed.data.defaultPolicyId,
+    keyHash,
+    profileId: parsed.data.profileId,
     active: true,
-    createdAt: new Date().toISOString(),
-    lastUsedAt: null,
+    createdAt: now,
+    revokedAt: null,
   };
 
-  await putApiKey(c.env, record);
-  await appendAuditLog(c.env, { action: 'create', resourceType: 'api_key', resourceId: record.id, after: { ...record, keyHash: '[redacted]' }, timestamp: new Date().toISOString() });
+  await Promise.all([
+    putApiKeyPointer(c.env, keyHash, record.profileId),
+    putApiKeyRecord(c.env, record),
+  ]);
+  await appendAuditLog(c.env, { action: 'create', resourceType: 'api_key', resourceId: record.id, after: { ...record, keyHash: '[redacted]' }, timestamp: now });
 
   return c.json({ ...record, rawKey }, 201);
 });
 
-// Revoke (deactivate) a key by its ID
 app.post('/:id/revoke', async c => {
-  const list = await c.env.API_KEYS.list({ prefix: 'apikey:' });
-  for (const key of list.keys) {
-    const raw = await c.env.API_KEYS.get(key.name);
-    if (!raw) continue;
-    const rec = JSON.parse(raw) as ApiKeyRecord;
-    if (rec.id !== c.req.param('id')) continue;
+  const record = await findKeyById(c.env, c.req.param('id'));
+  if (!record) return c.json({ error: 'Not found' }, 404);
 
-    const updated = { ...rec, active: false };
-    await putApiKey(c.env, updated);
-    await appendAuditLog(c.env, { action: 'revoke', resourceType: 'api_key', resourceId: rec.id, timestamp: new Date().toISOString() });
+  const updated = { ...record, active: false, revokedAt: new Date().toISOString() };
+  await Promise.all([
+    deleteApiKeyPointer(c.env, record.keyHash),
+    putApiKeyRecord(c.env, updated),
+  ]);
+  await appendAuditLog(c.env, { action: 'revoke', resourceType: 'api_key', resourceId: record.id, timestamp: updated.revokedAt });
 
-    return c.json({ ok: true });
-  }
-  return c.json({ error: 'Not found' }, 404);
+  return c.json({ ok: true });
 });
 
-// Rotate — revoke old, issue new
 app.post('/:id/rotate', async c => {
-  const list = await c.env.API_KEYS.list({ prefix: 'apikey:' });
-  for (const key of list.keys) {
-    const raw = await c.env.API_KEYS.get(key.name);
-    if (!raw) continue;
-    const rec = JSON.parse(raw) as ApiKeyRecord;
-    if (rec.id !== c.req.param('id')) continue;
+  const record = await findKeyById(c.env, c.req.param('id'));
+  if (!record) return c.json({ error: 'Not found' }, 404);
 
-    // Revoke old
-    await putApiKey(c.env, { ...rec, active: false });
+  const now = new Date().toISOString();
+  const revokedRecord = { ...record, active: false, revokedAt: now };
+  await Promise.all([
+    deleteApiKeyPointer(c.env, record.keyHash),
+    putApiKeyRecord(c.env, revokedRecord),
+  ]);
 
-    // Issue new
-    const newRawKey = generateRawKey();
-    const newHash = await sha256Hex(newRawKey);
-    const newRecord: ApiKeyRecord = {
-      ...rec,
-      id: crypto.randomUUID(),
-      keyHash: newHash,
-      active: true,
-      createdAt: new Date().toISOString(),
-      lastUsedAt: null,
-    };
-    await putApiKey(c.env, newRecord);
-    await appendAuditLog(c.env, { action: 'rotate', resourceType: 'api_key', resourceId: rec.id, after: newRecord.id, timestamp: new Date().toISOString() });
+  const newRawKey = generateRawKey();
+  const newHash = await sha256Hex(newRawKey);
+  const newRecord: ApiKeyRecord = {
+    ...record,
+    id: crypto.randomUUID(),
+    keyHash: newHash,
+    active: true,
+    createdAt: now,
+    revokedAt: null,
+  };
 
-    return c.json({ ...newRecord, rawKey: newRawKey }, 201);
-  }
-  return c.json({ error: 'Not found' }, 404);
+  await Promise.all([
+    putApiKeyPointer(c.env, newHash, newRecord.profileId),
+    putApiKeyRecord(c.env, newRecord),
+  ]);
+  await appendAuditLog(c.env, { action: 'rotate', resourceType: 'api_key', resourceId: record.id, after: newRecord.id, timestamp: now });
+
+  return c.json({ ...newRecord, rawKey: newRawKey }, 201);
 });
 
-// Delete permanently
 app.delete('/:id', async c => {
-  const list = await c.env.API_KEYS.list({ prefix: 'apikey:' });
-  for (const key of list.keys) {
-    const raw = await c.env.API_KEYS.get(key.name);
-    if (!raw) continue;
-    const rec = JSON.parse(raw) as ApiKeyRecord;
-    if (rec.id !== c.req.param('id')) continue;
+  const record = await findKeyById(c.env, c.req.param('id'));
+  if (!record) return c.json({ error: 'Not found' }, 404);
 
-    await deleteApiKey(c.env, rec.keyHash);
-    await appendAuditLog(c.env, { action: 'delete', resourceType: 'api_key', resourceId: rec.id, timestamp: new Date().toISOString() });
-    return c.json({ ok: true });
-  }
-  return c.json({ error: 'Not found' }, 404);
+  await Promise.all([
+    deleteApiKeyPointer(c.env, record.keyHash),
+    deleteApiKeyRecord(c.env, record.keyHash),
+  ]);
+  await appendAuditLog(c.env, { action: 'delete', resourceType: 'api_key', resourceId: record.id, timestamp: new Date().toISOString() });
+
+  return c.json({ ok: true });
 });
+
+async function findKeyById(env: Env, id: string): Promise<ApiKeyRecord | null> {
+  const keys = await r2ListKeys(env.POLICY_STORE, R2_PREFIX.APIKEYS);
+  for (const key of keys) {
+    const r = await r2GetJson<ApiKeyRecord>(env.POLICY_STORE, key);
+    if (r?.id === id) return r;
+  }
+  return null;
+}
 
 export default app;

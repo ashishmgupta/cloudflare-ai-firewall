@@ -1,11 +1,10 @@
 import type { Context, Next } from 'hono';
-import type { Policy, ApiKeyRecord } from '@firewall/shared';
-import { KV_PREFIX } from '@firewall/shared';
+import { KV_PROFILE_PREFIX, PROFILE_MEMORY_CACHE_TTL_MS, SecurityProfileSchema } from '@firewall/shared';
+import type { SecurityProfile } from '@firewall/shared';
 import type { Env } from '../env.js';
-import { POLICY_MEMORY_CACHE_TTL_MS } from '@firewall/shared';
 
-// Module-scope in-memory policy cache — shared within an isolate, TTL ~60s
-const policyCache = new Map<string, { policy: Policy; expiresAt: number }>();
+// Module-scope — shared within a Workers isolate, TTL 60s
+const profileCache = new Map<string, { profile: SecurityProfile; expiresAt: number }>();
 
 async function sha256Hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
@@ -14,16 +13,16 @@ async function sha256Hex(input: string): Promise<string> {
     .join('');
 }
 
-export async function getPolicy(policyId: string, env: Env): Promise<Policy | null> {
-  const hit = policyCache.get(policyId);
-  if (hit && hit.expiresAt > Date.now()) return hit.policy;
+async function loadProfile(profileId: string, env: Env): Promise<SecurityProfile | null> {
+  const hit = profileCache.get(profileId);
+  if (hit && hit.expiresAt > Date.now()) return hit.profile;
 
-  const raw = await env.POLICY_CACHE.get(`${KV_PREFIX.POLICY}${policyId}`);
+  const raw = await env.POLICY_CACHE.get(`${KV_PROFILE_PREFIX}${profileId}`);
   if (!raw) return null;
 
-  const policy = JSON.parse(raw) as Policy;
-  policyCache.set(policyId, { policy, expiresAt: Date.now() + POLICY_MEMORY_CACHE_TTL_MS });
-  return policy;
+  const profile = SecurityProfileSchema.parse(JSON.parse(raw));
+  profileCache.set(profileId, { profile, expiresAt: Date.now() + PROFILE_MEMORY_CACHE_TTL_MS });
+  return profile;
 }
 
 async function isKeyRevoked(keyHash: string, env: Env): Promise<boolean> {
@@ -34,7 +33,7 @@ async function isKeyRevoked(keyHash: string, env: Env): Promise<boolean> {
     const { revoked } = await res.json<{ revoked: boolean }>();
     return revoked;
   } catch {
-    return false; // fail-open for revocation check
+    return false; // fail-open
   }
 }
 
@@ -45,57 +44,27 @@ export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) 
   }
 
   const keyHash = await sha256Hex(rawKey);
-  const raw = await c.env.API_KEYS.get(`${KV_PREFIX.API_KEY}${keyHash}`);
 
-  if (!raw) {
+  // Read 1: keyHash → { profileId }
+  const pointerRaw = await c.env.POLICY_CACHE.get(`${KV_PROFILE_PREFIX}${keyHash}`);
+  if (!pointerRaw) {
     return c.json({ error: 'Invalid API key', code: 'INVALID_API_KEY' }, 401);
   }
 
-  const keyRecord = JSON.parse(raw) as ApiKeyRecord;
+  const { profileId } = JSON.parse(pointerRaw) as { profileId: string };
 
-  if (!keyRecord.active) {
-    return c.json({ error: 'API key is inactive', code: 'INVALID_API_KEY' }, 401);
+  // Read 2: profileId → full document (in-memory cached)
+  const profile = await loadProfile(profileId, c.env);
+  if (!profile) {
+    return c.json({ error: 'Profile not found', code: 'PROFILE_NOT_FOUND' }, 500);
   }
 
-  // Fast revocation check via Durable Object (bypasses KV propagation delay)
   if (await isKeyRevoked(keyHash, c.env)) {
     return c.json({ error: 'API key has been revoked', code: 'INVALID_API_KEY' }, 401);
   }
 
-  // Resolve policy: X-Policy-Name override → default
-  const policyNameHeader = c.req.header('X-Policy-Name');
-  let policy: Policy | null = null;
-
-  if (policyNameHeader) {
-    // Find the named policy among the key's bound policies
-    for (const pid of keyRecord.policyIds) {
-      const p = await getPolicy(pid, c.env);
-      if (p && p.name === policyNameHeader) {
-        policy = p;
-        break;
-      }
-    }
-    if (!policy) {
-      return c.json({ error: `Policy '${policyNameHeader}' not bound to this key`, code: 'POLICY_NOT_FOUND' }, 400);
-    }
-  } else {
-    policy = await getPolicy(keyRecord.defaultPolicyId, c.env);
-  }
-
-  if (!policy) {
-    return c.json({ error: 'Policy not found', code: 'POLICY_NOT_FOUND' }, 500);
-  }
-
-  c.set('keyRecord' as never, keyRecord);
-  c.set('policy' as never, policy);
-
-  // Update lastUsedAt in the background
-  c.executionCtx.waitUntil(
-    c.env.API_KEYS.put(
-      `${KV_PREFIX.API_KEY}${keyHash}`,
-      JSON.stringify({ ...keyRecord, lastUsedAt: new Date().toISOString() }),
-    ),
-  );
+  c.set('profile' as never, profile);
+  c.set('keyHash' as never, keyHash);
 
   return next();
 }

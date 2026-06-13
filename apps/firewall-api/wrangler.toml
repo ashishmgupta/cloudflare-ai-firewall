@@ -14,10 +14,6 @@ id = "7fbf19505d334e2ca23e40a36b1f6884"
 binding = "VERDICT_CACHE"
 id = "08bdcede02144671a84b46fb7bd1881f"
 
-[[kv_namespaces]]
-binding = "API_KEYS"
-id = "f4718fea68a749afa907603c771c542c"
-
 [durable_objects]
 bindings = [
   { name = "RATE_LIMITER", class_name = "RateLimiter" },

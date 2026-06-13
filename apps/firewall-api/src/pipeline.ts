@@ -1,21 +1,45 @@
-import type { InspectRequest, InspectResponse, Policy, Violation, Verdict } from '@firewall/shared';
+import type {
+  InspectRequest,
+  InspectResponse,
+  SecurityProfile,
+  Violation,
+  Verdict,
+  Setting,
+  Detection,
+} from '@firewall/shared';
 import type { Env } from './env.js';
-import { runLayer0 } from './layers/layer0-heuristics.js';
+import { type ActiveDetection, runLayer0 } from './layers/layer0-heuristics.js';
 import { hashPrompt, checkLayer1Cache, writeLayer1Cache } from './layers/layer1-cache.js';
 import { checkLayer2Vector } from './layers/layer2-vector.js';
 import { checkLayer3Llm } from './layers/layer3-llm.js';
 
-function scoreToVerdict(score: number, thresholds: { flag: number; block: number }): Verdict {
-  if (score >= thresholds.block) return 'block';
-  if (score >= thresholds.flag) return 'flag';
+// Flatten all enabled detections across the profile into one list
+export function getActiveDetections(profile: SecurityProfile): ActiveDetection[] {
+  const result: ActiveDetection[] = [];
+  for (const policy of profile.policies) {
+    for (const category of policy.categories) {
+      for (const detection of category.detections) {
+        const enabledSettings: Setting[] = detection.settings.filter(s => s.enabled);
+        // Include if has enabled settings OR has no sub-settings (detection itself is the unit)
+        if (enabledSettings.length > 0 || detection.settings.length === 0) {
+          result.push({ policyName: policy.name, categoryName: category.name, detection, enabledSettings });
+        }
+      }
+    }
+  }
+  return result;
+}
+
+export function aggregateVerdict(violations: Violation[]): Verdict {
+  if (violations.some(v => v.mode === 'block')) return 'block';
+  if (violations.length > 0) return 'monitor';
   return 'pass';
 }
 
 function buildResponse(
   requestId: string,
   verdict: Verdict,
-  score: number,
-  policy: Policy,
+  profile: SecurityProfile,
   violations: Violation[],
   perLayer: Record<string, number>,
   startTime: number,
@@ -24,8 +48,7 @@ function buildResponse(
   return {
     requestId,
     verdict,
-    score: Math.round(score),
-    policy: { id: policy.id, name: policy.name },
+    profile: { id: profile.id, name: profile.name },
     violations,
     latencyMs: { total: Date.now() - startTime, perLayer },
     cached,
@@ -34,7 +57,7 @@ function buildResponse(
 
 export async function runPipeline(
   req: InspectRequest,
-  policy: Policy,
+  profile: SecurityProfile,
   env: Env,
   ctx: ExecutionContext,
   requestId: string,
@@ -43,29 +66,36 @@ export async function runPipeline(
   const startTime = Date.now();
   const perLayer: Record<string, number> = {};
 
-  // ── Layer 0: in-memory heuristics (synchronous, no I/O) ──────────────────
-  const l0t = Date.now();
-  const layer0 = runLayer0(req.prompt, policy);
-  perLayer['layer0'] = Date.now() - l0t;
-
-  // Confident high score → block immediately without touching AI
-  if (layer0.confident && layer0.score >= policy.scoreThresholds.block) {
-    return buildResponse(requestId, 'block', layer0.score, policy, layer0.violations, perLayer, startTime, false);
+  const activeDetections = getActiveDetections(profile);
+  if (activeDetections.length === 0) {
+    return buildResponse(requestId, 'pass', profile, [], perLayer, startTime, false);
   }
 
-  // ── Layers 1 + 2: fire in parallel ───────────────────────────────────────
-  const normalizedHash = await hashPrompt(req.prompt);
-  const cacheKey = `${normalizedHash}:${policy.id}`;
+  // ── Layer 0: synchronous heuristics (0ms I/O) ─────────────────────────────
+  const l0t = Date.now();
+  const l0Violations = runLayer0(req.prompt, activeDetections);
+  perLayer['layer0'] = Date.now() - l0t;
 
-  const cachePromise = policy.layers.layer1.enabled && !bypassCache
+  // Immediate block on confident heuristic (no need to call AI)
+  if (l0Violations.some(v => v.mode === 'block')) {
+    return buildResponse(requestId, 'block', profile, l0Violations, perLayer, startTime, false);
+  }
+
+  // ── Layer 1 (cache) + Layer 2 (vector): parallel I/O ─────────────────────
+  const normalizedHash = await hashPrompt(req.prompt);
+  const cacheKey = `${normalizedHash}:${profile.id}`;
+
+  const cachePromise = !bypassCache
     ? checkLayer1Cache(cacheKey, env)
     : Promise.resolve(null);
 
-  const vectorPromise = policy.layers.layer2.enabled
-    ? checkLayer2Vector(req.prompt, policy, env)
-    : Promise.resolve(null);
+  const needsVector = !!env.FIREWALL_VECTORIZE && activeDetections.some(
+    ad => ad.detection.id === 'det-injection' || ad.detection.id === 'det-jailbreak',
+  );
+  const vectorPromise = needsVector
+    ? checkLayer2Vector(req.prompt, activeDetections, env)
+    : Promise.resolve([] as Violation[]);
 
-  // Cache check takes priority — await it first, abandon vector if hit
   const l1t = Date.now();
   const cacheHit = await cachePromise;
   perLayer['layer1'] = Date.now() - l1t;
@@ -74,104 +104,51 @@ export async function runPipeline(
     return { ...cacheHit, requestId, cached: true };
   }
 
-  const violations: Violation[] = [...layer0.violations];
-  let score = layer0.score;
+  const violations: Violation[] = [...l0Violations];
 
   const l2t = Date.now();
-  let vectorViolation: Awaited<ReturnType<typeof checkLayer2Vector>> = null;
   try {
-    vectorViolation = await vectorPromise;
+    const l2Violations = await vectorPromise;
     perLayer['layer2'] = Date.now() - l2t;
+    violations.push(...l2Violations);
   } catch {
     perLayer['layer2'] = Date.now() - l2t;
-    if (!policy.failOpen) {
-      return buildResponse(requestId, 'block', 100, policy, violations, perLayer, startTime, false);
+    if (!profile.failOpen) {
+      return buildResponse(requestId, 'block', profile, violations, perLayer, startTime, false);
     }
   }
 
-  if (vectorViolation) {
-    violations.push(vectorViolation);
-    // Weight vector match by similarity score
-    const vecScore = vectorViolation.confidence * 100;
-    const categoryAction = policy.categoryActions[vectorViolation.category];
-    if (categoryAction === 'block') {
-      score = Math.max(score, policy.scoreThresholds.block);
-    } else {
-      score = Math.max(score, vecScore);
-    }
-  }
-
-  // Short-circuit: already confident after vector
-  if (score >= policy.scoreThresholds.block) {
-    const response = buildResponse(requestId, 'block', score, policy, violations, perLayer, startTime, false);
-    ctx.waitUntil(writeLayer1Cache(cacheKey, response, policy.layers.layer1.ttlSeconds, env));
+  // Short-circuit: block from combined L0+L2
+  if (violations.some(v => v.mode === 'block')) {
+    const response = buildResponse(requestId, 'block', profile, violations, perLayer, startTime, false);
+    ctx.waitUntil(writeLayer1Cache(cacheKey, response, profile.cacheTtlSeconds, env));
     return response;
   }
 
-  // ── Layer 3: LLM classification (only for ambiguous prompts) ─────────────
-  if (policy.layers.layer3.enabled) {
+  // ── Layer 3: LLM for Content Moderation detections ────────────────────────
+  const l3Detections = activeDetections.filter(
+    ad => ad.detection.id === 'det-content-mod' || ad.categoryName === 'Content Moderation',
+  );
+
+  if (l3Detections.length > 0) {
     const l3t = Date.now();
     try {
-      const llmResult = await checkLayer3Llm(req.prompt, req.context ?? [], policy, env);
+      const l3Violations = await checkLayer3Llm(req.prompt, l3Detections, env);
       perLayer['layer3'] = Date.now() - l3t;
-
-      if (!llmResult.safe) {
-        violations.push(...llmResult.violations);
-
-        // Apply per-category actions from policy
-        for (const v of llmResult.violations) {
-          const action = policy.categoryActions[v.category];
-          if (action === 'block') {
-            score = Math.max(score, policy.scoreThresholds.block);
-          } else if (action === 'flag') {
-            score = Math.max(score, policy.scoreThresholds.flag);
-          } else {
-            score = Math.max(score, 70);
-          }
-        }
-      }
-    } catch {
+      violations.push(...l3Violations);
+    } catch (err) {
       perLayer['layer3'] = Date.now() - l3t;
-      if (!policy.failOpen) {
-        return buildResponse(requestId, 'block', 100, policy, violations, perLayer, startTime, false);
+      console.error('[pipeline] layer3 error:', err);
+      if (!profile.failOpen) {
+        return buildResponse(requestId, 'block', profile, violations, perLayer, startTime, false);
       }
-      // fail-open: continue with current score + add warning violation
-      violations.push({
-        category: 'layer3_error',
-        categoryName: 'LLM Layer Error (fail-open)',
-        layer: 'llm',
-        confidence: 0,
-        mitreAtlas: { techniqueId: 'N/A', techniqueName: 'N/A', tactic: 'N/A' },
-      });
     }
   }
 
-  const verdict = scoreToVerdict(score, policy.scoreThresholds);
-  const response = buildResponse(requestId, verdict, score, policy, violations, perLayer, startTime, false);
+  const verdict = aggregateVerdict(violations);
+  const response = buildResponse(requestId, verdict, profile, violations, perLayer, startTime, false);
 
-  // Cache verdict and emit analytics in the background
-  ctx.waitUntil(
-    Promise.all([
-      writeLayer1Cache(cacheKey, response, policy.layers.layer1.ttlSeconds, env),
-      emitAnalytics(response, policy, env),
-    ]),
-  );
+  ctx.waitUntil(writeLayer1Cache(cacheKey, response, profile.cacheTtlSeconds, env));
 
   return response;
-}
-
-async function emitAnalytics(
-  response: InspectResponse,
-  policy: Policy,
-  env: Env,
-): Promise<void> {
-  try {
-    env.ANALYTICS?.writeDataPoint({
-      blobs: [response.requestId, policy.id, response.verdict],
-      doubles: [response.score, response.latencyMs.total],
-      indexes: [policy.tenantId],
-    });
-  } catch {
-    // Analytics failures must never affect the inspection path
-  }
 }

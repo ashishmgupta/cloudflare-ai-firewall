@@ -8,6 +8,6 @@
     "deploy:firewall": "npm run deploy -w apps/firewall-api",
     "deploy:manager": "npm run deploy -w apps/policy-manager",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "vitest run"
   }
 }

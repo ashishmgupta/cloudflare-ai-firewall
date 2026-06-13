@@ -6,18 +6,10 @@ account_id = "02fab3c83f2f24ed8457a7575fe03150"
 [ai]
 binding = "AI"
 
-# Shared KV namespaces with firewall-api (same IDs)
+# Shared with firewall-api (same KV namespace ID)
 [[kv_namespaces]]
 binding = "POLICY_CACHE"
 id = "7fbf19505d334e2ca23e40a36b1f6884"
-
-[[kv_namespaces]]
-binding = "API_KEYS"
-id = "f4718fea68a749afa907603c771c542c"
-
-[[kv_namespaces]]
-binding = "TENANTS"
-id = "ea406e8b13a74b558e38435cdc10b00f"
 
 [[r2_buckets]]
 binding = "POLICY_STORE"
@@ -30,4 +22,4 @@ bucket_name = "ai-firewall-audit"
 [vars]
 ENVIRONMENT = "production"
 
-# Store admin tokens as secrets: wrangler secret put ADMIN_TOKEN
+# Store admin token as a secret: wrangler secret put ADMIN_TOKEN
