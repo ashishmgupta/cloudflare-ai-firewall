@@ -59,7 +59,7 @@ Layers run in order with short-circuit logic — each layer only runs if the pre
 - Only runs for injection/jailbreak detections, not content moderation
 - Vectorize is optional — returns nothing if not bound (requires Workers paid plan)
 
-**Layer 3 — LLM Classifier (~100–500 ms)**
+**Layer 3 — LLM Classifier (~1–3 s)**
 - Uses `llama-3.3-70b-instruct-fp8-fast` via Workers AI
 - **Only runs if Content Moderation detections are active in the profile** — completely skipped otherwise
 - Builds a dynamic system prompt from the active detection profile
@@ -76,7 +76,7 @@ Layers run in order with short-circuit logic — each layer only runs if the pre
 | Workers KV (`VERDICT_CACHE`) | firewall-api | Two-tier verdict cache. Cache API first, KV fallback. Keyed by SHA-256(normalize(prompt)):profileId |
 | R2 (`ai-firewall-policies`) | policy-manager | Durable source of truth: `profiles/`, `apikeys/`, `signatures/` — never read on hot path |
 | R2 (`ai-firewall-audit`) | policy-manager | Append-only admin action audit log |
-| D1 SQLite (`firewall-events`) | firewall-tester | Test run history with SQL queries: GROUP BY verdict, filter by set, pagination |
+| D1 SQLite (`firewall-events`) | firewall-tester + policy-manager (shared) | Tables: users, sessions, events, inspect_keys. Session auth for both apps. Test run history. Inspect-tab profile registry. |
 | Workers AI | firewall-api + policy-manager | `bge-small-en-v1.5` for embeddings; `llama-3.3-70b-instruct-fp8-fast` for L3 classification |
 | Vectorize (`ai-firewall-attacks`) | firewall-api (read) + policy-manager (write) | 384-dim cosine index of known attack prompt embeddings |
 | Service Binding | firewall-tester → firewall-api | Internal call, no public internet, no workers.dev restriction |
@@ -137,15 +137,13 @@ cloudflare-ai-firewall/
       env.ts                — Env interface (AI, POLICY_CACHE, VERDICT_CACHE, FIREWALL_VECTORIZE?, DOs)
       middleware/
         auth.ts             — key hash → KV → SecurityProfile
-        rate-limit.ts       — RateLimiter DO check
       layers/
         layer0-heuristics.ts
         layer1-cache.ts     — Cache API + KV two-tier
-        layer2-vector.ts    — bge-small + Vectorize
-        layer3-llm.ts       — llama-3.3-70b
+        layer2-vector.ts    — bge-small + Vectorize (injection/jailbreak only)
+        layer3-llm.ts       — llama-3.3-70b (content-mod only)
       durable-objects/
-        rate-limiter.ts
-        key-revocation.ts
+        legacy-stubs.ts     — empty KeyRevocation + RateLimiter stubs (migration only)
     policy-manager/src/
       routes/
         profiles.ts         — CRUD SecurityProfiles

@@ -74,6 +74,10 @@
 <polyline points="252,418 286,418 286,545 640,545 640,524"
   fill="none" stroke="#bc8cff" stroke-width="1.5" stroke-opacity="0.45"/>
 
+<!-- policy-manager → D1 (shared auth database) -->
+<polyline points="252,292 296,292 296,552 640,552 640,524"
+  fill="none" stroke="#d29922" stroke-width="1.5" stroke-opacity="0.35" stroke-dasharray="4,3"/>
+
 <!-- firewall-tester → firewall-api  (Service Binding) -->
 <line x1="135" y1="360" x2="135" y2="200"
   stroke="#bc8cff" stroke-width="1.5" stroke-opacity="0.5" stroke-dasharray="5,3"/>
@@ -106,7 +110,7 @@
 <text x="34" y="280" font-family="system-ui" font-size="11" fill="#6e7681">Admin REST API + Web dashboard</text>
 <text x="34" y="296" font-family="system-ui" font-size="11" fill="#6e7681">Profiles · API keys · attack signatures</text>
 <text x="34" y="312" font-family="system-ui" font-size="11" fill="#6e7681">Writes KV (fast path) + R2 (durable)</text>
-<text x="34" y="325" font-family="system-ui" font-size="10" fill="#4d5966">Embeds sigs → Vectorize  ·  Bearer token</text>
+<text x="34" y="325" font-family="system-ui" font-size="10" fill="#4d5966">Embeds sigs → Vectorize  ·  session cookie</text>
 
 <!-- firewall-tester -->
 <rect x="20" y="360" width="232" height="116" rx="9"
@@ -163,11 +167,11 @@
 <rect x="310" y="478" width="290" height="82" rx="9"
   fill="#110a20" stroke="#2d1a50" stroke-width="1.5"/>
 <text x="322" y="496" font-family="system-ui" font-size="9.5" font-weight="700" fill="#4d2a7a" letter-spacing="1.5">D1 SQLITE</text>
-<text x="322" y="509" font-family="system-ui" font-size="9.5" fill="#4d5966">Owned exclusively by firewall-tester</text>
+<text x="322" y="509" font-family="system-ui" font-size="9.5" fill="#4d5966">Shared: firewall-tester + policy-manager</text>
 <rect x="320" y="498" width="272" height="54" rx="6" fill="#1c2128" stroke="#bc8cff" stroke-width="1" stroke-opacity="0.4"/>
 <text x="334" y="516" font-family="system-ui" font-size="11.5" font-weight="700" fill="#bc8cff">firewall-events</text>
-<text x="334" y="532" font-family="system-ui" font-size="10.5" fill="#6e7681">Test run history · verdict · violations</text>
-<text x="334" y="547" font-family="system-ui" font-size="10" fill="#4d5966">raw request · raw response · latency</text>
+<text x="334" y="532" font-family="system-ui" font-size="10.5" fill="#6e7681">users · sessions · events · inspect_keys</text>
+<text x="334" y="547" font-family="system-ui" font-size="10" fill="#4d5966">session auth · test history · inspect registry</text>
 
 <!-- =====================================================================
      COLUMN 3 — COMPUTE & AI   x 640–1040
