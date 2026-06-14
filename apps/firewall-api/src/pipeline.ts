@@ -130,7 +130,11 @@ export async function runPipeline(
     ad => ad.detection.id === 'det-content-mod' || ad.categoryName === 'Content Moderation',
   );
 
-  if (l3Detections.length > 0) {
+  // Skip L3 on very short prompts — LLM has insufficient context and false-positive
+  // rate is unacceptably high below 8 words (industry standard minimum).
+  const wordCount = req.prompt.trim().split(/\s+/).filter(Boolean).length;
+
+  if (l3Detections.length > 0 && wordCount >= 8) {
     const l3t = Date.now();
     try {
       const l3Violations = await checkLayer3Llm(req.prompt, l3Detections, env);

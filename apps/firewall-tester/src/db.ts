@@ -101,15 +101,23 @@ export interface EventRow {
   request_id: string | null;
   raw_request: string;
   raw_response: string;
+  username: string | null;
+  ip_address: string | null;
+  country: string | null;
+  city: string | null;
 }
 
 export async function insertEvent(db: D1Database, e: EventRow): Promise<void> {
   await db.prepare(
-    `INSERT INTO events (id,ts,prompt_set,prompt_label,prompt,verdict,expected,violations,latency_ms,request_id,raw_request,raw_response)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(e.id, e.ts, e.prompt_set, e.prompt_label, e.prompt, e.verdict,
-         e.expected ?? null, e.violations, e.latency_ms, e.request_id ?? null,
-         e.raw_request, e.raw_response).run();
+    `INSERT INTO events
+       (id,ts,prompt_set,prompt_label,prompt,verdict,expected,violations,latency_ms,request_id,raw_request,raw_response,username,ip_address,country,city)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    e.id, e.ts, e.prompt_set, e.prompt_label, e.prompt, e.verdict,
+    e.expected ?? null, e.violations, e.latency_ms, e.request_id ?? null,
+    e.raw_request, e.raw_response,
+    e.username ?? null, e.ip_address ?? null, e.country ?? null, e.city ?? null,
+  ).run();
 }
 
 export async function queryEvents(
@@ -165,6 +173,56 @@ export async function getStats(db: D1Database) {
 
 export async function clearEvents(db: D1Database): Promise<void> {
   await db.prepare('DELETE FROM events').run();
+}
+
+export interface UserStat {
+  username: string;
+  total: number;
+  blocks: number;
+  monitors: number;
+  passes: number;
+  avg_ms: number;
+  accuracy: number | null;
+}
+
+export interface LocationStat {
+  country: string;
+  city: string;
+  total: number;
+}
+
+export async function getAdminStats(db: D1Database): Promise<{ byUser: UserStat[]; byLocation: LocationStat[] }> {
+  const [byUser, byLocation] = await Promise.all([
+    db.prepare(`
+      SELECT
+        COALESCE(username, 'unknown') as username,
+        COUNT(*) as total,
+        COUNT(CASE WHEN verdict = 'block'   THEN 1 END) as blocks,
+        COUNT(CASE WHEN verdict = 'monitor' THEN 1 END) as monitors,
+        COUNT(CASE WHEN verdict = 'pass'    THEN 1 END) as passes,
+        ROUND(AVG(latency_ms)) as avg_ms,
+        ROUND(
+          COUNT(CASE WHEN verdict = expected THEN 1 END) * 100.0 /
+          NULLIF(COUNT(CASE WHEN expected IS NOT NULL THEN 1 END), 0)
+        , 1) as accuracy
+      FROM events
+      GROUP BY COALESCE(username, 'unknown')
+      ORDER BY total DESC
+    `).all<UserStat>(),
+
+    db.prepare(`
+      SELECT
+        COALESCE(country, 'Unknown') as country,
+        COALESCE(city, '') as city,
+        COUNT(*) as total
+      FROM events
+      GROUP BY country, city
+      ORDER BY total DESC
+      LIMIT 30
+    `).all<LocationStat>(),
+  ]);
+
+  return { byUser: byUser.results, byLocation: byLocation.results };
 }
 
 // ── Inspection profile registry ───────────────────────────────────────────────

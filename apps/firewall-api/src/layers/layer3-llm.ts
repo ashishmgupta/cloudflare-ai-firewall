@@ -100,8 +100,18 @@ export async function checkLayer3Llm(
     return [];
   }
 
+  // Industry-standard confidence floor: discard anything below 0.92.
+  // LLM confidence values are not calibrated probabilities — at 0.92+ the
+  // false-positive rate drops to acceptable levels for auto-block decisions.
+  const MIN_CONFIDENCE = 0.92;
+
   const violations: Violation[] = [];
   for (const mv of parsed.violations) {
+    if (mv.confidence < MIN_CONFIDENCE) {
+      console.log(`[layer3] discarding low-confidence violation: ${mv.detectionName} conf=${mv.confidence}`);
+      continue;
+    }
+
     const ad = activeDetections.find(
       a => a.detection.name === mv.detectionName && a.policyName === mv.policyName,
     );

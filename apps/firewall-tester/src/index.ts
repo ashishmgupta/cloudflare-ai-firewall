@@ -3,7 +3,7 @@ import type { MiddlewareHandler } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { PROMPT_SETS } from './prompts.js';
 import {
-  insertEvent, queryEvents, getStats, clearEvents,
+  insertEvent, queryEvents, getStats, clearEvents, getAdminStats,
   getUserByUsername, listUsers, createUser, updateUser, deleteUser, countUsers,
   createSession, getSession, deleteSession, deleteUserSessions,
   listInspectKeys, getInspectKey, upsertInspectKey, deleteInspectKey,
@@ -237,6 +237,17 @@ app.get('/api/inspect-profiles', async c =>
   c.json(await listInspectKeys(c.env.DB)),
 );
 
+// ── Inspect profile details — proxies to firewall-api /v1/profile-info ────────
+app.get('/api/inspect-profiles/:profileId/details', async c => {
+  const inspectKey = await getInspectKey(c.env.DB, c.req.param('profileId'));
+  if (!inspectKey) return c.json({ error: 'Profile not found' }, 404);
+  const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/profile-info', {
+    headers: { 'X-API-Key': inspectKey.api_key },
+  });
+  const data = await res.json();
+  return c.json(data, res.status as 200);
+});
+
 // ── Inspect key management (admin only) ────────────────────────────────────────
 app.get('/api/inspect-keys', requireAdmin, async c =>
   c.json(await listInspectKeys(c.env.DB)),
@@ -268,8 +279,20 @@ app.post('/api/run-set', async c => {
   const set = PROMPT_SETS.find(s => s.id === setId);
   if (!set) return c.json({ error: 'Unknown set id' }, 404);
 
+  const sessionUser = c.get('user');
+  const ip = c.req.header('CF-Connecting-IP')
+    ?? c.req.header('X-Forwarded-For')?.split(',')[0]?.trim()
+    ?? null;
+  const cf = c.req.raw.cf as { country?: string; city?: string } | undefined;
+  const userCtx = {
+    username:   sessionUser?.username ?? null,
+    ip_address: ip,
+    country:    cf?.country ?? null,
+    city:       cf?.city    ?? null,
+  };
+
   const results = await Promise.allSettled(
-    set.items.map(item => runAndStore(item.prompt, setId, item.label, item.expected, c.env)),
+    set.items.map(item => runAndStore(item.prompt, setId, item.label, item.expected, c.env, userCtx)),
   );
 
   const mapped = await Promise.all(results.map(async (r, i) => {
@@ -290,6 +313,7 @@ app.post('/api/run-set', async c => {
         request_id: null,
         raw_request: JSON.stringify({ prompt: set.items[i].prompt }),
         raw_response: JSON.stringify({ error: errMsg }),
+        ...userCtx,
       });
     } catch (dbErr) {
       console.error('[run-set] D1 insert failed:', String(dbErr));
@@ -333,6 +357,9 @@ app.delete('/api/events', async c => {
 // ── Stats ──────────────────────────────────────────────────────────────────────
 app.get('/api/stats', async c => c.json(await getStats(c.env.DB)));
 
+// ── Admin stats (per-user + per-location breakdown) ────────────────────────────
+app.get('/api/admin/stats', requireAdmin, async c => c.json(await getAdminStats(c.env.DB)));
+
 // ── Bootstrap default admin from ADMIN_TOKEN ───────────────────────────────────
 async function bootstrapAdmin(env: Env): Promise<void> {
   if ((await countUsers(env.DB)) > 0) return;
@@ -355,6 +382,7 @@ async function runAndStore(
   promptLabel: string,
   expected: string,
   env: Env,
+  userCtx: { username: string | null; ip_address: string | null; country: string | null; city: string | null },
 ) {
   const requestBody = JSON.stringify({ prompt });
   const requestHeaders = { 'Content-Type': 'application/json', 'X-API-Key': '[redacted]' };
@@ -405,6 +433,7 @@ async function runAndStore(
       headers: responseHeaders,
       body: data,
     }),
+    ...userCtx,
   });
 
   return {

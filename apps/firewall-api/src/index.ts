@@ -15,6 +15,23 @@ app.onError((err, c) => {
 app.get('/', c => c.text('AI Firewall API v2'));
 app.get('/health', c => c.json({ status: 'ok', version: 2 }));
 
+app.get('/v1/profile-info', authMiddleware, async c => {
+  const profile = c.get('profile' as never) as SecurityProfile;
+  const { getActiveDetections } = await import('./pipeline.js');
+  const active = getActiveDetections(profile);
+  return c.json({
+    id: profile.id,
+    name: profile.name,
+    detections: active.map(ad => ({
+      policyName:    ad.policyName,
+      categoryName:  ad.categoryName,
+      detectionName: ad.detection.name,
+      mode:          ad.detection.mode,
+      settings:      ad.enabledSettings.map(s => ({ id: s.id, name: s.name })),
+    })),
+  });
+});
+
 app.post('/v1/inspect', authMiddleware, async c => {
   const body = await c.req.json();
 
