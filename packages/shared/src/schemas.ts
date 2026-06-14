@@ -17,6 +17,14 @@ export const SettingSchema = z.object({
   description: z.string().default(''),
 });
 
+// ─── Custom pattern (word/phrase or regex, for user-defined rules) ────────────
+
+export const CustomPatternSchema = z.object({
+  value: z.string().min(1),
+  isRegex: z.boolean().default(false),
+  description: z.string().default(''),
+});
+
 // ─── Detection (enforcement unit) ────────────────────────────────────────────
 
 export const DetectionSchema = z.object({
@@ -28,7 +36,9 @@ export const DetectionSchema = z.object({
   settings: z.array(SettingSchema).default([]),
   detectionExample: z.string().default(''),
   safeExample: z.string().default(''),
-  mitreAtlas: MitreAtlasSchema,
+  mitreAtlas: MitreAtlasSchema.optional(),
+  type: z.enum(['builtin', 'custom']).default('builtin'),
+  customPatterns: z.array(CustomPatternSchema).default([]),
 });
 
 // ─── Category (grouping of detections) ────────────────────────────────────────

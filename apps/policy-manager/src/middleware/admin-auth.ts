@@ -10,6 +10,11 @@ export async function adminAuth(c: Context<{ Bindings: Env }>, next: Next) {
 
   if (!token) return c.json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' }, 401);
 
+  // Machine token: allows scripted access (seed scripts, CI) without a DB session
+  if (c.env.ADMIN_TOKEN && token === c.env.ADMIN_TOKEN) {
+    return next();
+  }
+
   const session = await c.env.DB
     .prepare('SELECT role FROM sessions WHERE token = ? AND expires_at > ?')
     .bind(token, new Date().toISOString())

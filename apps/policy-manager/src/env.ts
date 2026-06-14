@@ -6,4 +6,5 @@ export interface Env {
   FIREWALL_VECTORIZE?: VectorizeIndex;
   DB: D1Database;
   ENVIRONMENT: string;
+  ADMIN_TOKEN?: string;        // machine-token for scripted API access (wrangler secret)
 }

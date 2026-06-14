@@ -18,6 +18,10 @@ id = "7fbf19505d334e2ca23e40a36b1f6884"
 binding = "VERDICT_CACHE"
 id = "08bdcede02144671a84b46fb7bd1881f"
 
+[[vectorize]]
+binding = "FIREWALL_VECTORIZE"
+index_name = "ai-firewall-attacks"
+
 [vars]
 ENVIRONMENT = "production"
 

@@ -156,6 +156,12 @@ const SETTING_RULES = new Map<string, (prompt: string) => string | null>([
   }],
 ]);
 
+const CUSTOM_MITRE_DEFAULT = {
+  techniqueId: 'AML.T0000',
+  techniqueName: 'Custom Rule',
+  tactic: 'ml-attack-staging',
+} as const;
+
 // ─── Layer 0 entry point ──────────────────────────────────────────────────────
 
 export function runLayer0(prompt: string, activeDetections: ActiveDetection[]): Violation[] {
@@ -165,6 +171,40 @@ export function runLayer0(prompt: string, activeDetections: ActiveDetection[]): 
     // Content Moderation has no L0 rules — handled entirely by Layer 3
     if (ad.detection.id === 'det-content-mod') continue;
 
+    // Custom detections: word lists and regex patterns
+    if (ad.detection.type === 'custom') {
+      for (const pattern of ad.detection.customPatterns) {
+        let evidence: string | null = null;
+        if (pattern.isRegex) {
+          try {
+            const re = new RegExp(pattern.value, 'i');
+            const m = re.exec(prompt);
+            if (m) evidence = m[0].slice(0, 80);
+          } catch { /* invalid regex — skip */ }
+        } else {
+          const lower = prompt.toLowerCase();
+          const idx = lower.indexOf(pattern.value.toLowerCase());
+          if (idx !== -1) evidence = prompt.slice(idx, idx + pattern.value.length);
+        }
+        if (evidence !== null) {
+          violations.push({
+            policyName: ad.policyName,
+            categoryName: ad.categoryName,
+            detectionName: ad.detection.name,
+            setting: pattern.description || pattern.value.slice(0, 40),
+            mode: ad.detection.mode,
+            confidence: 1.0,
+            detectedBy: 'heuristic',
+            evidence,
+            mitreAtlas: ad.detection.mitreAtlas ?? CUSTOM_MITRE_DEFAULT,
+          });
+          break; // first matching pattern per detection is sufficient
+        }
+      }
+      continue;
+    }
+
+    // Built-in setting rules
     for (const setting of ad.enabledSettings) {
       const rule = SETTING_RULES.get(setting.id);
       if (!rule) continue;
@@ -181,7 +221,7 @@ export function runLayer0(prompt: string, activeDetections: ActiveDetection[]): 
         confidence: 0.9,
         detectedBy: 'heuristic',
         evidence,
-        mitreAtlas: ad.detection.mitreAtlas,
+        mitreAtlas: ad.detection.mitreAtlas ?? CUSTOM_MITRE_DEFAULT,
       });
     }
   }

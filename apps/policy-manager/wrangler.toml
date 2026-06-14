@@ -28,6 +28,10 @@ binding        = "DB"
 database_name  = "firewall-events"
 database_id    = "91379b5b-c82f-4c14-8351-c0d57eca83aa"
 
+[[vectorize]]
+binding = "FIREWALL_VECTORIZE"
+index_name = "ai-firewall-attacks"
+
 [vars]
 ENVIRONMENT = "production"
 

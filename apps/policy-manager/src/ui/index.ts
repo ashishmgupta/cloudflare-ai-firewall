@@ -192,6 +192,72 @@ const html = `<!DOCTYPE html>
                   x-text="tpl.replace(/-/g,' ')"></button>
               </template>
             </div>
+
+            <!-- ── Custom Rules ─────────────────────────────────────────── -->
+            <div class="mt-3 pt-3 border-t border-gray-100">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Custom Rules</span>
+                <button @click="openAddCustomRule(profile)" class="text-xs text-indigo-600 hover:underline">+ Add Rule</button>
+              </div>
+              <template x-for="det in getCustomDets(profile)" :key="det.id">
+                <div class="flex items-start gap-2 py-1 text-xs">
+                  <span :class="det.mode==='block' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'"
+                    class="px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0" x-text="det.mode"></span>
+                  <div class="flex-1 min-w-0">
+                    <span class="font-medium" x-text="det.name"></span>
+                    <span class="text-gray-400 ml-1" x-text="'(' + (det.customPatterns||[]).length + ' patterns)'"></span>
+                    <div class="text-gray-400 mt-0.5 flex flex-wrap gap-1">
+                      <template x-for="(p, i) in (det.customPatterns||[]).slice(0,4)" :key="i">
+                        <span class="inline-block bg-gray-100 rounded px-1 font-mono truncate max-w-[120px]"
+                          x-text="p.isRegex ? '/' + p.value + '/i' : p.value"></span>
+                      </template>
+                      <span x-show="(det.customPatterns||[]).length > 4" class="text-gray-300"
+                        x-text="'+' + (det.customPatterns.length - 4) + ' more'"></span>
+                    </div>
+                  </div>
+                  <button @click="removeCustomDet(profile, det.id)" class="text-red-400 hover:text-red-600 shrink-0 text-sm leading-none">×</button>
+                </div>
+              </template>
+              <div x-show="getCustomDets(profile).length === 0 && showCustomDetForm !== profile.id"
+                class="text-xs text-gray-400 py-1">No custom rules yet.</div>
+
+              <!-- Add form -->
+              <div x-show="showCustomDetForm === profile.id" x-cloak
+                class="mt-2 bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
+                <div class="flex gap-2">
+                  <input x-model="customDetForm.name" type="text" placeholder="Rule name *"
+                    class="flex-1 border rounded px-2 py-1 text-xs" />
+                  <select x-model="customDetForm.mode" class="border rounded px-2 py-1 text-xs">
+                    <option value="block">Block</option>
+                    <option value="monitor">Monitor</option>
+                  </select>
+                </div>
+                <div class="space-y-1">
+                  <template x-for="(p, i) in customDetForm.patterns" :key="i">
+                    <div class="flex items-center gap-1 text-xs">
+                      <span class="bg-white border rounded px-2 py-0.5 font-mono flex-1 truncate"
+                        x-text="p.isRegex ? '/' + p.value + '/i' : p.value"></span>
+                      <button @click="removePatternFromDet(i)" class="text-red-400 hover:text-red-600 shrink-0">×</button>
+                    </div>
+                  </template>
+                </div>
+                <div class="flex gap-1 items-center">
+                  <input x-model="customPatternInput" @keydown.enter="addPatternToDet()" type="text"
+                    placeholder="Word, phrase or regex…" class="flex-1 border rounded px-2 py-1 text-xs" />
+                  <label class="flex items-center gap-1 text-xs shrink-0 cursor-pointer">
+                    <input type="checkbox" x-model="customPatternIsRegex" class="rounded" />
+                    Regex
+                  </label>
+                  <button @click="addPatternToDet()"
+                    class="text-xs bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 shrink-0">+</button>
+                </div>
+                <div class="flex gap-2">
+                  <button @click="saveCustomDetection(profile)"
+                    class="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">Save Rule</button>
+                  <button @click="showCustomDetForm=''" class="text-xs text-gray-500 px-3 py-1">Cancel</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="px-5 py-3 border-t border-gray-100 bg-gray-50">
             <div class="flex items-center justify-between mb-2">
@@ -394,6 +460,10 @@ function app() {
     profileForm: { name: '', description: '', rateLimit: null, failOpen: true, cacheTtlSeconds: 3600 },
     keyForm: { name: '', profileId: '' },
     sigForm: { text: '', category: 'injection', description: '' },
+    showCustomDetForm: '',
+    customDetForm: { name: '', mode: 'block', patterns: [] },
+    customPatternInput: '',
+    customPatternIsRegex: false,
 
     // ── Init ──────────────────────────────────────────────────────────────────
     async init() {
@@ -700,6 +770,96 @@ function app() {
       });
       if (r && r.ok) {
         this.notify('Policy removed');
+        await this.loadProfiles();
+      } else if (r) {
+        this.notify('Failed: ' + (await r.text()), true);
+      }
+    },
+
+    // ── Custom detection rules ────────────────────────────────────────────────
+    getCustomDets(profile) {
+      const pol = (profile.policies ?? []).find(p => p.id === 'policy-custom-rules');
+      if (!pol) return [];
+      const cat = (pol.categories ?? []).find(c => c.id === 'cat-custom-rules');
+      return cat ? (cat.detections ?? []) : [];
+    },
+
+    openAddCustomRule(profile) {
+      this.showCustomDetForm = this.showCustomDetForm === profile.id ? '' : profile.id;
+      this.customDetForm = { name: '', mode: 'block', patterns: [] };
+      this.customPatternInput = '';
+      this.customPatternIsRegex = false;
+    },
+
+    addPatternToDet() {
+      const v = this.customPatternInput.trim();
+      if (!v) return;
+      this.customDetForm.patterns.push({ value: v, isRegex: this.customPatternIsRegex, description: '' });
+      this.customPatternInput = '';
+      this.customPatternIsRegex = false;
+    },
+
+    removePatternFromDet(i) {
+      this.customDetForm.patterns.splice(i, 1);
+    },
+
+    async saveCustomDetection(profile) {
+      if (!this.customDetForm.name.trim()) return this.notify('Rule name is required', true);
+      if (!this.customDetForm.patterns.length) return this.notify('Add at least one pattern', true);
+
+      const updated = JSON.parse(JSON.stringify(profile));
+      let pol = updated.policies.find(p => p.id === 'policy-custom-rules');
+      if (!pol) {
+        pol = { id: 'policy-custom-rules', name: 'Custom Rules', description: 'User-defined word list and regex rules', categories: [] };
+        updated.policies.push(pol);
+      }
+      let cat = pol.categories.find(c => c.id === 'cat-custom-rules');
+      if (!cat) {
+        cat = { id: 'cat-custom-rules', name: 'Custom Rules', description: '', detections: [] };
+        pol.categories.push(cat);
+      }
+      cat.detections.push({
+        id: 'det-custom-' + Date.now(),
+        name: this.customDetForm.name.trim(),
+        description: '',
+        mode: this.customDetForm.mode,
+        settings: [],
+        detectionExample: '',
+        safeExample: '',
+        type: 'custom',
+        customPatterns: this.customDetForm.patterns,
+      });
+
+      const r = await this.req('/api/profiles/' + profile.id, {
+        method: 'PUT',
+        headers: this.headers(),
+        body: JSON.stringify({ policies: updated.policies }),
+      });
+      if (r && r.ok) {
+        this.showCustomDetForm = '';
+        this.notify('Custom rule added');
+        await this.loadProfiles();
+      } else if (r) {
+        this.notify('Save failed: ' + (await r.text()), true);
+      }
+    },
+
+    async removeCustomDet(profile, detId) {
+      if (!confirm('Remove this custom rule?')) return;
+      const updated = JSON.parse(JSON.stringify(profile));
+      const pol = updated.policies.find(p => p.id === 'policy-custom-rules');
+      if (!pol) return;
+      const cat = pol.categories.find(c => c.id === 'cat-custom-rules');
+      if (!cat) return;
+      cat.detections = cat.detections.filter(d => d.id !== detId);
+
+      const r = await this.req('/api/profiles/' + profile.id, {
+        method: 'PUT',
+        headers: this.headers(),
+        body: JSON.stringify({ policies: updated.policies }),
+      });
+      if (r && r.ok) {
+        this.notify('Custom rule removed');
         await this.loadProfiles();
       } else if (r) {
         this.notify('Failed: ' + (await r.text()), true);

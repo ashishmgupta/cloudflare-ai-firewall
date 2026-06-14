@@ -126,7 +126,7 @@ export async function checkLayer3Llm(
       confidence: mv.confidence,
       detectedBy: 'llm',
       evidence: mv.evidence,
-      mitreAtlas: ad.detection.mitreAtlas,
+      mitreAtlas: ad.detection.mitreAtlas ?? { techniqueId: 'AML.T0000', techniqueName: 'Custom Rule', tactic: 'ml-attack-staging' },
     });
   }
 
