@@ -3,12 +3,7 @@ import { InspectRequestSchema, MAX_PROMPT_BYTES } from '@firewall/shared';
 import type { SecurityProfile } from '@firewall/shared';
 import type { Env } from './env.js';
 import { authMiddleware } from './middleware/auth.js';
-import { rateLimitMiddleware } from './middleware/rate-limit.js';
 import { runPipeline } from './pipeline.js';
-import { RateLimiter } from './durable-objects/rate-limiter.js';
-import { KeyRevocation } from './durable-objects/key-revocation.js';
-
-export { RateLimiter, KeyRevocation };
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -20,7 +15,7 @@ app.onError((err, c) => {
 app.get('/', c => c.text('AI Firewall API v2'));
 app.get('/health', c => c.json({ status: 'ok', version: 2 }));
 
-app.post('/v1/inspect', authMiddleware, rateLimitMiddleware, async c => {
+app.post('/v1/inspect', authMiddleware, async c => {
   const body = await c.req.json();
 
   const byteLen = new TextEncoder().encode(body?.prompt ?? '').length;
@@ -40,9 +35,32 @@ app.post('/v1/inspect', authMiddleware, rateLimitMiddleware, async c => {
   const requestId = crypto.randomUUID();
   const bypassCache = c.req.header('X-Bypass-Cache') === '1';
 
+  const wallStart = Date.now();
   const result = await runPipeline(parsed.data, profile, c.env, c.executionCtx, requestId, bypassCache);
+  const wallMs = Date.now() - wallStart;
+
+  // Latency as response headers — always accurate for THIS request.
+  // Cached responses only get the cache-lookup time; layer breakdown is omitted
+  // because those layers did not run.
+  c.header('X-Firewall-Request-Id', requestId);
+  c.header('X-Firewall-Cached', result.cached ? 'true' : 'false');
+  if (result.cached) {
+    c.header('X-Firewall-Latency-Ms', String(wallMs));
+  } else if (result.latencyMs) {
+    c.header('X-Firewall-Latency-Ms', String(result.latencyMs.total));
+    for (const [layer, ms] of Object.entries(result.latencyMs.perLayer)) {
+      c.header(`X-Firewall-${layer}-Ms`, String(ms));
+    }
+  }
+
+  // Strip latencyMs from the response body — it lives in headers now.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { latencyMs: _dropped, ...responseBody } = result;
   const status = result.verdict === 'block' ? 403 : 200;
-  return c.json(result, status);
+  return c.json(responseBody, status);
 });
 
 export default app;
+
+// Legacy DO stubs — required by Cloudflare while the deleted_classes migration runs.
+export { KeyRevocation, RateLimiter } from './durable-objects/legacy-stubs.js';

@@ -36,11 +36,9 @@ flowchart TB
     end
 
     %% ── Middleware (firewall-api) ─────────────────────────────────────────────
-    subgraph middleware["Auth & Rate-limit  (inside firewall-api)"]
+    subgraph middleware["Auth Middleware  (inside firewall-api)"]
         direction LR
-        auth["Auth middleware\nSHA-256(key) → profile lookup"]
-        rl["RateLimiter DO\nper-key RPM cap"]
-        kr["KeyRevocation DO\ninstant revocation\n(bypasses KV TTL)"]
+        auth["Auth middleware\nSHA-256(key) → KV lookup → SecurityProfile"]
     end
 
     %% ── KV Namespaces ────────────────────────────────────────────────────────
@@ -76,8 +74,6 @@ flowchart TB
     middleware --> pipeline
 
     auth -->|"1. hash key\n2. KV lookup"| kv_policy
-    auth -->|"revocation check"| kr
-    rl -.->|"per-key counter"| rl
 
     l1 <-->|"read / write verdicts"| kv_verdict
     l2 -->|"embed prompt"| emb
@@ -102,8 +98,6 @@ flowchart TB
 | `ai-firewall-policies` | R2 | Durable storage for profile documents and API key records. Written by policy-manager; never read on the hot path. |
 | `ai-firewall-audit` | R2 | Append-only audit log for all admin actions. |
 | `firewall-events` | D1 | SQLite database owned by firewall-tester. Stores prompt, verdict, violations, latency, and raw request/response per test run. |
-| `RateLimiter` | Durable Object | Per-key request counter. Enforces `rateLimit.requestsPerMinute` from the SecurityProfile. |
-| `KeyRevocation` | Durable Object | Instant revocation store. Bypasses KV's ~60 s propagation delay — revoked keys are rejected immediately. |
 | `bge-small-en-v1.5` | Workers AI | Embeds the incoming prompt into a 384-dim vector for similarity search (Layer 2). |
 | `llama-3.3-70b-instruct-fp8-fast` | Workers AI | LLM safety classifier (Layer 3). Evaluates prompts against S1–S14 content safety categories. |
 | `ai-firewall-attacks` (Vectorize) | Vectorize | 384-dim cosine index of known attack signatures. Layer 2 queries this with the prompt embedding. |

@@ -34,7 +34,19 @@ ${MODEL_OUTPUT_SCHEMA_DESCRIPTION}
 - "setting" must exactly match an enabled setting name listed above.
 - "mode" must exactly match the mode listed for that detection.
 - "evidence" is a short excerpt ≤100 chars — never reproduce the full message.
-- Return empty violations array with "verdict":"pass" if nothing triggers.`;
+- Return empty violations array with "verdict":"pass" if nothing triggers.
+
+## Explicit Exclusions for Content Moderation
+
+Content Moderation covers harmful CONTENT categories only: violence, explicit sexual content, hate speech, illegal activity promotion, harassment, and self-harm. It does NOT cover data handling concerns.
+
+Do NOT flag the following under Content Moderation — they are handled by Sensitive Data policies, not here:
+- API keys, API tokens, API secrets, access tokens, auth tokens, bearer tokens
+- Passwords, passphrases, credentials, or private keys
+- Secret values with vendor prefixes (e.g. sk-, ghp_, AKIA, xoxb-, AIza, pk_live_)
+- Any request that embeds credentials in order to authenticate to a service
+
+If the prompt contains a credential but no actual harmful content, return "verdict":"pass" with no violations.`;
 }
 
 export async function checkLayer3Llm(

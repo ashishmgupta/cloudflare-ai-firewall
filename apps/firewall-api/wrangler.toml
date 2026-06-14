@@ -14,18 +14,21 @@ id = "7fbf19505d334e2ca23e40a36b1f6884"
 binding = "VERDICT_CACHE"
 id = "08bdcede02144671a84b46fb7bd1881f"
 
-[durable_objects]
-bindings = [
-  { name = "RATE_LIMITER", class_name = "RateLimiter" },
-  { name = "KEY_REVOCATION", class_name = "KeyRevocation" }
-]
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["RateLimiter", "KeyRevocation"]
-
 [vars]
 ENVIRONMENT = "production"
 
 [observability]
 enabled = true
+
+[[durable_objects.bindings]]
+name = "KEY_REVOCATION"
+class_name = "KeyRevocation"
+
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
+# Remove legacy Durable Object classes dropped in the SecurityProfile refactor
+[[migrations]]
+tag = "v1"
+deleted_classes = ["KeyRevocation", "RateLimiter"]

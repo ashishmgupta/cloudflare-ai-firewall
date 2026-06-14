@@ -16,14 +16,42 @@ const html = `<!DOCTYPE html>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen" x-data="app()" x-init="init()">
 
+<!-- ── Login overlay ────────────────────────────────────────────────────────── -->
+<div x-show="!loggedIn" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#f9fafb;z-index:50">
+  <div class="bg-white border border-gray-200 rounded-xl p-9 w-full max-w-sm shadow-sm">
+    <div class="text-xl font-bold text-indigo-700 mb-1">AI Firewall</div>
+    <div class="text-gray-400 text-sm mb-6">Policy Manager — Admin sign in</div>
+    <div x-show="loginError" x-cloak class="mb-4 text-red-600 text-sm bg-red-50 border border-red-200 rounded px-3 py-2" x-text="loginError"></div>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-gray-500 uppercase tracking-wider block mb-1">Username</label>
+        <input type="text" x-model="loginUsername" @keydown.enter="login()"
+          class="w-full border rounded px-3 py-2 text-sm" placeholder="admin" autocomplete="username" />
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 uppercase tracking-wider block mb-1">Password</label>
+        <input type="password" x-model="loginPassword" @keydown.enter="login()"
+          class="w-full border rounded px-3 py-2 text-sm" autocomplete="current-password" />
+      </div>
+      <button @click="login()" :disabled="loginBusy"
+        class="w-full bg-indigo-600 text-white py-2 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 mt-1"
+        x-text="loginBusy ? 'Signing in…' : 'Sign In'"></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── App (hidden until logged in) ────────────────────────────────────────── -->
+<div x-show="loggedIn" x-cloak>
+
 <nav class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
   <div class="flex items-center gap-3">
     <span class="text-xl font-bold text-indigo-600">AI Firewall</span>
     <span class="text-xs text-gray-400 font-mono">v2 · Policy Manager</span>
   </div>
-  <div class="flex items-center gap-2">
-    <input x-model="adminToken" type="password" placeholder="Admin token" class="text-sm border rounded px-3 py-1 w-56" />
-    <button @click="loadAll()" class="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">Connect</button>
+  <div class="flex items-center gap-3">
+    <span class="text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 rounded px-2 py-0.5 font-semibold">ADMIN</span>
+    <span class="text-sm text-gray-700 font-medium" x-text="user && user.username"></span>
+    <button @click="logout()" class="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-3 py-1">Sign Out</button>
   </div>
 </nav>
 
@@ -44,6 +72,14 @@ const html = `<!DOCTYPE html>
     <button @click="message=''" class="font-bold ml-4">×</button>
   </div>
 
+  <!-- Raw key banner -->
+  <div x-show="newRawKey" x-cloak class="mb-4 bg-amber-50 border border-amber-300 rounded-lg p-4">
+    <p class="text-sm font-semibold text-amber-800 mb-1">Save this API key — it will not be shown again</p>
+    <code class="block text-sm font-mono break-all text-amber-900 mt-1 mb-2" x-text="newRawKey"></code>
+    <p class="text-xs text-amber-700 mb-2">Use this key as the <code class="bg-amber-100 px-1 rounded">X-API-Key</code> header when calling <code class="bg-amber-100 px-1 rounded">POST /v1/inspect</code> on the firewall-api.</p>
+    <button @click="newRawKey=''" class="text-xs text-amber-600 hover:underline">Dismiss</button>
+  </div>
+
   <!-- ── Profiles ── -->
   <div x-show="tab==='profiles'">
     <div class="flex justify-between items-center mb-4">
@@ -54,7 +90,6 @@ const html = `<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- Add-from-template panel -->
     <div x-show="showAddFromTemplate" x-cloak class="mb-6 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
       <p class="text-sm font-medium text-indigo-800 mb-3">Create a profile with built-in template policies</p>
       <div class="flex gap-3 flex-wrap">
@@ -66,7 +101,6 @@ const html = `<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- Create/Edit profile form -->
     <div x-show="showProfileForm" x-cloak class="mb-6 bg-white border rounded-lg p-4">
       <h3 class="font-semibold mb-3" x-text="editingProfile ? 'Edit Profile' : 'New Profile'"></h3>
       <div class="grid grid-cols-2 gap-3 mb-3">
@@ -100,13 +134,12 @@ const html = `<!DOCTYPE html>
     </div>
 
     <div x-show="profiles.length === 0" x-cloak class="text-sm text-gray-400 py-8 text-center">
-      No profiles yet. Connect with your admin token to load, or create one above.
+      No profiles yet. Create one above.
     </div>
 
     <div class="space-y-4">
       <template x-for="profile in profiles" :key="profile.id">
         <div class="bg-white border rounded-lg overflow-hidden">
-          <!-- Profile header -->
           <div class="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
             <div>
               <span class="font-semibold" x-text="profile.name"></span>
@@ -118,13 +151,13 @@ const html = `<!DOCTYPE html>
               <button @click="confirmDeleteProfile(profile.id)" class="text-xs text-red-500 hover:underline">Delete</button>
             </div>
           </div>
-          <!-- Policies within profile -->
           <div class="px-5 py-3">
             <template x-for="policy in (profile.policies ?? [])" :key="policy.id">
               <details class="mb-2">
-                <summary class="text-sm font-medium py-1">
+                <summary class="text-sm font-medium py-1 flex items-center">
                   <span x-text="policy.name"></span>
                   <span class="text-xs text-gray-400 ml-2" x-text="'(' + (policy.categories?.length ?? 0) + ' categories)'"></span>
+                  <button @click.stop="removePolicyFromProfile(profile, policy.id)" class="ml-auto text-xs text-red-400 hover:text-red-600 font-normal">Remove</button>
                 </summary>
                 <div class="ml-4 mt-1 space-y-1">
                   <template x-for="cat in (policy.categories ?? [])" :key="cat.id">
@@ -151,6 +184,35 @@ const html = `<!DOCTYPE html>
               </details>
             </template>
             <div x-show="(profile.policies ?? []).length === 0" class="text-xs text-gray-400 py-2">No policies embedded yet.</div>
+            <div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+              <span class="text-xs text-gray-400">Add policy:</span>
+              <template x-for="tpl in templates" :key="tpl">
+                <button @click="addPolicyToProfile(profile, tpl)"
+                  class="text-xs border border-indigo-300 text-indigo-600 px-2 py-0.5 rounded hover:bg-indigo-50"
+                  x-text="tpl.replace(/-/g,' ')"></button>
+              </template>
+            </div>
+          </div>
+          <div class="px-5 py-3 border-t border-gray-100 bg-gray-50">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">API Keys</span>
+              <button @click="quickCreateKey(profile)" class="text-xs text-indigo-600 hover:underline">+ New Key</button>
+            </div>
+            <template x-for="key in apiKeys.filter(k => k.profileId === profile.id)" :key="key.id">
+              <div class="flex items-center gap-3 py-1.5 border-b border-gray-100 last:border-0 text-sm">
+                <span class="font-medium text-gray-800" x-text="key.name"></span>
+                <span :class="key.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                  class="px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" x-text="key.active ? 'active' : 'revoked'"></span>
+                <span class="text-xs text-gray-400 shrink-0" x-text="key.createdAt?.slice(0,10)"></span>
+                <div class="ml-auto flex gap-3 shrink-0">
+                  <button x-show="key.active" @click="rotateKey(key.id)" class="text-xs text-blue-600 hover:underline">Rotate</button>
+                  <button x-show="key.active" @click="revokeKey(key.id)" class="text-xs text-red-500 hover:underline">Revoke</button>
+                  <button @click="deleteKey(key.id)" class="text-xs text-gray-400 hover:underline">Delete</button>
+                </div>
+              </div>
+            </template>
+            <div x-show="!apiKeys.filter(k => k.profileId === profile.id).length"
+              class="text-xs text-gray-400 py-1">No API keys yet.</div>
           </div>
         </div>
       </template>
@@ -185,13 +247,6 @@ const html = `<!DOCTYPE html>
         <button @click="createKey()" class="text-sm bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700">Generate</button>
         <button @click="showKeyForm=false" class="text-sm text-gray-500 px-4 py-1.5">Cancel</button>
       </div>
-    </div>
-
-    <!-- Newly created key banner -->
-    <div x-show="newRawKey" x-cloak class="mb-4 bg-amber-50 border border-amber-300 rounded-lg p-4">
-      <p class="text-sm font-semibold text-amber-800 mb-1">Save this key — it will not be shown again</p>
-      <code class="text-sm font-mono break-all text-amber-900" x-text="newRawKey"></code>
-      <button @click="newRawKey=''" class="ml-3 text-xs text-amber-600 hover:underline">Dismiss</button>
     </div>
 
     <div class="bg-white border rounded-lg overflow-hidden">
@@ -308,11 +363,20 @@ const html = `<!DOCTYPE html>
   </div>
 
 </main>
+</div><!-- end x-show="loggedIn" -->
 
 <script>
 function app() {
   return {
-    adminToken: '',
+    // ── Auth state ─────────────────────────────────────────────────────────────
+    loggedIn: false,
+    user: null,
+    loginUsername: '',
+    loginPassword: '',
+    loginError: '',
+    loginBusy: false,
+
+    // ── App state ──────────────────────────────────────────────────────────────
     tab: 'profiles',
     message: '',
     msgErr: false,
@@ -331,42 +395,105 @@ function app() {
     keyForm: { name: '', profileId: '' },
     sigForm: { text: '', category: 'injection', description: '' },
 
+    // ── Init ──────────────────────────────────────────────────────────────────
     async init() {
-      const res = await fetch('/api/templates');
-      if (res.ok) this.templates = await res.json();
+      // Load templates regardless of auth (public endpoint)
+      const tr = await fetch('/api/templates');
+      if (tr.ok) this.templates = await tr.json();
+      // Then check existing session
+      await this.checkSession();
     },
 
-    async loadAll() {
-      await Promise.all([this.loadProfiles(), this.loadKeys(), this.loadSigs(), this.loadAudit()]);
+    // ── Auth methods ──────────────────────────────────────────────────────────
+    async checkSession() {
+      const r = await fetch('/api/auth/me');
+      if (r.ok) {
+        this.user = await r.json();
+        this.loggedIn = true;
+        await this.loadAll();
+      }
+    },
+
+    async login() {
+      this.loginError = '';
+      this.loginBusy = true;
+      try {
+        const r = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: this.loginUsername, password: this.loginPassword }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          this.loginError = data.error || 'Login failed';
+          return;
+        }
+        this.loginPassword = '';
+        this.loginError = '';
+        this.user = data;
+        this.loggedIn = true;
+        await this.loadAll();
+      } catch (e) {
+        this.loginError = String(e);
+      } finally {
+        this.loginBusy = false;
+      }
+    },
+
+    async logout() {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      this.loggedIn = false;
+      this.user = null;
+      this.profiles = [];
+      this.apiKeys = [];
+      this.signatures = [];
+      this.auditEvents = [];
+    },
+
+    // ── Fetch helper: intercepts 401/403 ──────────────────────────────────────
+    async req(url, opts = {}) {
+      const r = await fetch(url, opts);
+      if (r.status === 401 || r.status === 403) {
+        this.loggedIn = false;
+        this.user = null;
+        return null;
+      }
+      return r;
     },
 
     headers() {
-      return { 'Authorization': 'Bearer ' + this.adminToken, 'Content-Type': 'application/json' };
+      return { 'Content-Type': 'application/json' };
     },
 
     notify(msg, err = false) { this.message = msg; this.msgErr = err; },
 
+    // ── Data loaders ──────────────────────────────────────────────────────────
+    async loadAll() {
+      await Promise.all([this.loadProfiles(), this.loadKeys(), this.loadSigs(), this.loadAudit()]);
+    },
+
     async loadProfiles() {
-      const r = await fetch('/api/profiles', { headers: this.headers() });
-      if (r.ok) this.profiles = await r.json();
-      else this.notify('Failed to load profiles', true);
+      const r = await this.req('/api/profiles');
+      if (r && r.ok) this.profiles = await r.json();
+      else if (r) this.notify('Failed to load profiles', true);
     },
 
     async loadKeys() {
-      const r = await fetch('/api/keys', { headers: this.headers() });
-      if (r.ok) this.apiKeys = await r.json();
+      const r = await this.req('/api/keys');
+      if (r && r.ok) this.apiKeys = await r.json();
     },
 
     async loadSigs() {
-      const r = await fetch('/api/signatures', { headers: this.headers() });
-      if (r.ok) this.signatures = await r.json();
+      const r = await this.req('/api/signatures');
+      if (r && r.ok) this.signatures = await r.json();
     },
 
     async loadAudit() {
-      const r = await fetch('/api/audit', { headers: this.headers() });
-      if (r.ok) this.auditEvents = await r.json();
+      const r = await this.req('/api/audit');
+      if (r && r.ok) this.auditEvents = await r.json();
     },
 
+    // ── Profile actions ───────────────────────────────────────────────────────
     openCreateProfile() {
       this.editingProfile = null;
       this.profileForm = { name: '', description: '', rateLimit: null, failOpen: true, cacheTtlSeconds: 3600 };
@@ -396,18 +523,34 @@ function app() {
       };
       if (!body.name) return this.notify('Name is required', true);
 
+      const isNew = !this.editingProfile;
       let r;
       if (this.editingProfile) {
-        r = await fetch('/api/profiles/' + this.editingProfile.id, { method: 'PUT', headers: this.headers(), body: JSON.stringify(body) });
+        r = await this.req('/api/profiles/' + this.editingProfile.id, { method: 'PUT', headers: this.headers(), body: JSON.stringify(body) });
       } else {
-        r = await fetch('/api/profiles', { method: 'POST', headers: this.headers(), body: JSON.stringify(body) });
+        r = await this.req('/api/profiles', { method: 'POST', headers: this.headers(), body: JSON.stringify(body) });
       }
-      if (r.ok) {
-        this.notify(this.editingProfile ? 'Profile updated' : 'Profile created');
+      if (r && r.ok) {
+        const profile = await r.json();
         this.showProfileForm = false;
         this.editingProfile = null;
-        await this.loadProfiles();
-      } else {
+        if (isNew) {
+          const keyRes = await this.req('/api/keys', {
+            method: 'POST', headers: this.headers(),
+            body: JSON.stringify({ name: profile.name + ' Default', profileId: profile.id }),
+          });
+          if (keyRes && keyRes.ok) {
+            const keyData = await keyRes.json();
+            this.newRawKey = keyData.rawKey;
+            this.notify('Profile created — API key generated. Save it now!');
+          } else {
+            this.notify('Profile created (key generation failed)', true);
+          }
+        } else {
+          this.notify('Profile updated');
+        }
+        await Promise.all([this.loadProfiles(), this.loadKeys()]);
+      } else if (r) {
         this.notify('Save failed: ' + (await r.text()), true);
       }
     },
@@ -416,75 +559,87 @@ function app() {
       const tplRes = await fetch('/api/templates/' + slug);
       if (!tplRes.ok) return this.notify('Template not found', true);
       const tpl = await tplRes.json();
-      const now = new Date().toISOString().slice(0,10);
       const body = {
         name: tpl.name + ' (Default)',
         description: tpl.description,
         policies: [tpl],
         rateLimit: null, failOpen: true, cacheTtlSeconds: 3600,
       };
-      const r = await fetch('/api/profiles', { method: 'POST', headers: this.headers(), body: JSON.stringify(body) });
-      if (r.ok) {
-        this.notify('Profile created from template "' + tpl.name + '"');
+      const r = await this.req('/api/profiles', { method: 'POST', headers: this.headers(), body: JSON.stringify(body) });
+      if (r && r.ok) {
+        const profile = await r.json();
         this.showAddFromTemplate = false;
-        await this.loadProfiles();
-      } else {
+        const keyRes = await this.req('/api/keys', {
+          method: 'POST', headers: this.headers(),
+          body: JSON.stringify({ name: profile.name + ' Default', profileId: profile.id }),
+        });
+        if (keyRes && keyRes.ok) {
+          const keyData = await keyRes.json();
+          this.newRawKey = keyData.rawKey;
+          this.notify('Profile created from template — API key generated. Save it now!');
+        } else {
+          this.notify('Profile created from template "' + tpl.name + '"');
+        }
+        await Promise.all([this.loadProfiles(), this.loadKeys()]);
+      } else if (r) {
         this.notify('Create failed: ' + (await r.text()), true);
       }
     },
 
     async confirmDeleteProfile(id) {
       if (!confirm('Delete this profile? API keys bound to it will stop working.')) return;
-      const r = await fetch('/api/profiles/' + id, { method: 'DELETE', headers: this.headers() });
-      if (r.ok) { this.notify('Profile deleted'); await this.loadProfiles(); }
-      else this.notify('Delete failed', true);
+      const r = await this.req('/api/profiles/' + id, { method: 'DELETE', headers: this.headers() });
+      if (r && r.ok) { this.notify('Profile deleted'); await this.loadProfiles(); }
+      else if (r) this.notify('Delete failed', true);
     },
 
+    // ── Key actions ───────────────────────────────────────────────────────────
     async createKey() {
       if (!this.keyForm.name || !this.keyForm.profileId) return this.notify('Name and profile are required', true);
-      const r = await fetch('/api/keys', { method: 'POST', headers: this.headers(), body: JSON.stringify(this.keyForm) });
-      if (r.ok) {
+      const r = await this.req('/api/keys', { method: 'POST', headers: this.headers(), body: JSON.stringify(this.keyForm) });
+      if (r && r.ok) {
         const data = await r.json();
         this.newRawKey = data.rawKey;
         this.showKeyForm = false;
         this.notify('API key created — save it now');
         await this.loadKeys();
-      } else this.notify('Create failed: ' + (await r.text()), true);
+      } else if (r) this.notify('Create failed: ' + (await r.text()), true);
     },
 
     async revokeKey(id) {
       if (!confirm('Revoke this key?')) return;
-      const r = await fetch('/api/keys/' + id + '/revoke', { method: 'POST', headers: this.headers() });
-      if (r.ok) { this.notify('Key revoked'); await this.loadKeys(); }
-      else this.notify('Revoke failed', true);
+      const r = await this.req('/api/keys/' + id + '/revoke', { method: 'POST', headers: this.headers() });
+      if (r && r.ok) { this.notify('Key revoked'); await this.loadKeys(); }
+      else if (r) this.notify('Revoke failed', true);
     },
 
     async rotateKey(id) {
       if (!confirm('Rotate this key? The old key will stop working immediately.')) return;
-      const r = await fetch('/api/keys/' + id + '/rotate', { method: 'POST', headers: this.headers() });
-      if (r.ok) {
+      const r = await this.req('/api/keys/' + id + '/rotate', { method: 'POST', headers: this.headers() });
+      if (r && r.ok) {
         const data = await r.json();
         this.newRawKey = data.rawKey;
         this.notify('Key rotated — save the new key now');
         await this.loadKeys();
-      } else this.notify('Rotate failed', true);
+      } else if (r) this.notify('Rotate failed', true);
     },
 
     async deleteKey(id) {
       if (!confirm('Permanently delete this key?')) return;
-      const r = await fetch('/api/keys/' + id, { method: 'DELETE', headers: this.headers() });
-      if (r.ok) { this.notify('Key deleted'); await this.loadKeys(); }
-      else this.notify('Delete failed', true);
+      const r = await this.req('/api/keys/' + id, { method: 'DELETE', headers: this.headers() });
+      if (r && r.ok) { this.notify('Key deleted'); await this.loadKeys(); }
+      else if (r) this.notify('Delete failed', true);
     },
 
+    // ── Signature actions ─────────────────────────────────────────────────────
     async addSignature() {
       if (!this.sigForm.text) return this.notify('Text is required', true);
-      const r = await fetch('/api/signatures', { method: 'POST', headers: this.headers(), body: JSON.stringify(this.sigForm) });
-      if (r.ok) {
+      const r = await this.req('/api/signatures', { method: 'POST', headers: this.headers(), body: JSON.stringify(this.sigForm) });
+      if (r && r.ok) {
         this.notify('Signature added');
         this.showSigForm = false;
         await this.loadSigs();
-      } else {
+      } else if (r) {
         const err = await r.json().catch(() => ({ error: r.statusText }));
         this.notify(err.error ?? 'Failed', true);
       }
@@ -492,9 +647,63 @@ function app() {
 
     async deleteSig(id) {
       if (!confirm('Delete this signature from Vectorize?')) return;
-      const r = await fetch('/api/signatures/' + id, { method: 'DELETE', headers: this.headers() });
-      if (r.ok) { this.notify('Signature deleted'); await this.loadSigs(); }
-      else this.notify('Delete failed', true);
+      const r = await this.req('/api/signatures/' + id, { method: 'DELETE', headers: this.headers() });
+      if (r && r.ok) { this.notify('Signature deleted'); await this.loadSigs(); }
+      else if (r) this.notify('Delete failed', true);
+    },
+
+    // ── Inline helpers ────────────────────────────────────────────────────────
+    async quickCreateKey(profile) {
+      const name = prompt('Key name:', profile.name + ' Key');
+      if (!name) return;
+      const r = await this.req('/api/keys', {
+        method: 'POST', headers: this.headers(),
+        body: JSON.stringify({ name, profileId: profile.id }),
+      });
+      if (r && r.ok) {
+        const data = await r.json();
+        this.newRawKey = data.rawKey;
+        this.notify('API key created — save it now!');
+        await this.loadKeys();
+      } else if (r) {
+        this.notify('Create failed: ' + (await r.text()), true);
+      }
+    },
+
+    async addPolicyToProfile(profile, templateSlug) {
+      const tplRes = await fetch('/api/templates/' + templateSlug);
+      if (!tplRes.ok) return this.notify('Template not found', true);
+      const tpl = await tplRes.json();
+      const existing = profile.policies ?? [];
+      if (existing.some(p => p.id === tpl.id)) {
+        return this.notify('"' + tpl.name + '" is already in this profile', true);
+      }
+      const r = await this.req('/api/profiles/' + profile.id, {
+        method: 'PUT',
+        headers: this.headers(),
+        body: JSON.stringify({ policies: [...existing, tpl] }),
+      });
+      if (r && r.ok) {
+        this.notify('"' + tpl.name + '" added to ' + profile.name);
+        await this.loadProfiles();
+      } else if (r) {
+        this.notify('Failed: ' + (await r.text()), true);
+      }
+    },
+
+    async removePolicyFromProfile(profile, policyId) {
+      if (!confirm('Remove this policy from the profile?')) return;
+      const r = await this.req('/api/profiles/' + profile.id, {
+        method: 'PUT',
+        headers: this.headers(),
+        body: JSON.stringify({ policies: (profile.policies ?? []).filter(p => p.id !== policyId) }),
+      });
+      if (r && r.ok) {
+        this.notify('Policy removed');
+        await this.loadProfiles();
+      } else if (r) {
+        this.notify('Failed: ' + (await r.text()), true);
+      }
     },
   };
 }

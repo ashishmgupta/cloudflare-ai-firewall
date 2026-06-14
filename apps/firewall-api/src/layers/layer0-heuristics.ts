@@ -85,8 +85,14 @@ const SETTING_RULES = new Map<string, (prompt: string) => string | null>([
     return m ? m[0] : null;
   }],
   ['set-api-secret', (p) => {
-    const m = /(?:api[_\-]?key|api[_\-]?secret|access[_\-]?token|auth[_\-]?token|bearer[_\-]?token|private[_\-]?key|secret[_\-]?key|password|passwd|pwd)\s*[:=\s]\s*['"]?[A-Za-z0-9_\-\.\/+]{10,}['"]?/i.exec(p);
-    return m ? m[0].slice(0, 60) : null;
+    // Keyword → value: allow space/underscore/hyphen between "api" and "key",
+    // and accept "is" / ":" / "=" as separators so natural language matches.
+    const kwMatch = /(?:api[\s_\-]?(?:key|secret)|access[\s_\-]?token|auth[\s_\-]?token|bearer[\s_\-]?token|private[\s_\-]?key|secret[\s_\-]?key|password|passwd|pwd)\s*(?:is\s+|[:=]\s*)?['"]?[A-Za-z0-9_\-\.\/+]{10,}['"]?/i.exec(p);
+    if (kwMatch) return kwMatch[0].slice(0, 60);
+    // Vendor-specific prefixes — presence alone is conclusive evidence
+    const prefixMatch = /\b(?:sk-(?:proj-)?[A-Za-z0-9_\-]{20,}|ghp_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|glpat-[A-Za-z0-9_\-]{20,}|xoxb-[0-9A-Za-z\-]{30,}|xoxp-[0-9A-Za-z\-]{30,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z\-_]{35,}|sk_(?:live|test)_[A-Za-z0-9]{24,}|pk_(?:live|test)_[A-Za-z0-9]{24,})\b/.exec(p);
+    if (prefixMatch) return prefixMatch[0].slice(0, 60);
+    return null;
   }],
   ['set-url', (p) => {
     const m = /https?:\/\/[^\s,>'"]{8,}/.exec(p);

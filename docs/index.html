@@ -710,6 +710,7 @@
       <li><a href="#flow-example">Live Example</a></li>
 
       <li class="nav-section">Reference</li>
+      <li><a href="#source-index">Code: index.ts</a></li>
       <li><a href="#atlas">MITRE ATLAS Mappings</a></li>
       <li><a href="#development">Development</a></li>
     </ul>
@@ -839,11 +840,9 @@ flowchart TB
         l3 --> verdict
     end
 
-    subgraph mw["Auth + Rate Limit — inside firewall-api"]
+    subgraph mw["Auth Middleware — inside firewall-api"]
         direction LR
-        auth["Auth Middleware\nSHA-256 key → KV lookup"]
-        rl["RateLimiter DO\nper-key RPM"]
-        kr["KeyRevocation DO\ninstant revocation"]
+        auth["Auth Middleware\nSHA-256 key → KV lookup → SecurityProfile"]
     end
 
     subgraph kv["Workers KV — global low-latency reads"]
@@ -874,7 +873,6 @@ flowchart TB
     mw --> pipeline
 
     auth -->|"lookup key hash"| kv1
-    auth -->|"revocation check"| kr
     l1 <-->|"read / write"| kv2
     l2 -->|"embed prompt"| emb
     l3 -->|"classify"| llm
@@ -899,8 +897,6 @@ flowchart TB
             <tr><td><code>ai-firewall-policies</code></td><td>R2</td><td>Durable storage for profile documents and API key records. Written by policy-manager; never on the hot path.</td></tr>
             <tr><td><code>ai-firewall-audit</code></td><td>R2</td><td>Append-only audit log for all admin actions.</td></tr>
             <tr><td><code>firewall-events</code></td><td>D1</td><td>SQLite for firewall-tester. Stores prompt, verdict, violations, latency, raw request/response per run.</td></tr>
-            <tr><td><code>RateLimiter</code></td><td>Durable Object</td><td>Per-key request counter. Enforces <code>requestsPerMinute</code> from the SecurityProfile.</td></tr>
-            <tr><td><code>KeyRevocation</code></td><td>Durable Object</td><td>Instant revocation store. Bypasses KV's ~60 s propagation delay — revoked keys rejected immediately.</td></tr>
             <tr><td><code>bge-small-en-v1.5</code></td><td>Workers AI</td><td>Embeds incoming prompts into 384-dim vectors for Layer 2 similarity search.</td></tr>
             <tr><td><code>llama-3.3-70b-fp8</code></td><td>Workers AI</td><td>LLM safety classifier (Layer 3). Evaluates S1–S14 content safety categories.</td></tr>
             <tr><td>Vectorize</td><td>Vectorize</td><td>384-dim cosine index of known attack signatures. Queried by Layer 2 with the prompt embedding.</td></tr>
@@ -972,8 +968,6 @@ flowchart TB
           <div class="flow-arrow">→</div>
           <div class="flow-node">Auth Middleware</div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">Rate Limiter DO</div>
-          <div class="flow-arrow">→</div>
           <div class="flow-node" style="border-color:var(--accent)44;color:var(--accent);">Pipeline</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;padding-left:20px;">
@@ -1010,9 +1004,7 @@ flowchart TB
               <p>If the request also sends <code>X-Policy-Name: my-policy</code>, that named policy is loaded from <strong>POLICY_CACHE KV</strong> instead — but only if it belongs to the same tenant as the API key.</p>
               <p>The loaded policy travels through the rest of the pipeline as a plain object. <strong>firewall-api never calls policy-manager at runtime</strong> — all policy data is pre-replicated into KV by policy-manager on every write.</p>
               <p>A module-scope in-memory cache (60 s TTL) avoids a KV round-trip on every request for the same key.</p>
-              <p>If the key has been revoked, a <strong>Durable Object</strong> (KeyRevocation) holds the tombstone and returns <code>403</code> immediately — bypassing the ~60 s KV propagation window.</p>
               <div class="sc-badge sc-block">→ 401 on missing / invalid key</div>
-              <div class="sc-badge sc-block" style="margin-left:8px;">→ 403 on revoked key</div>
             </div>
           </div>
         </div>
@@ -1228,7 +1220,6 @@ flowchart TB
             <ol style="font-size:12px;color:var(--muted);padding-left:18px;margin:0;">
               <li style="margin-bottom:5px;">Request arrived at the Cloudflare edge closest to the caller.</li>
               <li style="margin-bottom:5px;"><strong style="color:var(--text);">Auth middleware</strong> hashed <code>fw_322a826d…</code> → found the API key record in KV → loaded the <code>default-strict</code> policy.</li>
-              <li style="margin-bottom:5px;"><strong style="color:var(--text);">Rate limiter</strong> Durable Object confirmed the key is within its per-minute quota.</li>
               <li style="margin-bottom:5px;"><strong style="color:var(--text);">Layer 0</strong> ran 18 regex rules synchronously. Rule <code>INJ001</code> — <code>/ignore\s+(?:(?:all|any|…)\s+)*instructions?/i</code> — matched "Ignore all previous instructions". Weight 75 → score 75 ≥ block threshold (70) → <code>confident = true</code>.</li>
               <li style="margin-bottom:5px;">Pipeline short-circuited: <strong>layers 1, 2, and 3 were never called</strong>. No KV reads. No AI calls. No network I/O after auth.</li>
               <li style="margin-bottom:5px;">Response built: <code>verdict=block</code>, <code>score=75</code>, one violation with ATLAS tag <code>AML.T0051</code>, HTTP 403 returned in <strong>0 ms</strong>.</li>
@@ -1286,12 +1277,6 @@ flowchart TB
               <td>Globally distributed, sub-millisecond reads. firewall-api never touches R2 per-request.</td>
             </tr>
             <tr>
-              <td><strong>Durable Objects</strong></td>
-              <td>Per-key rate-limiting counters; revocation tombstones</td>
-              <td>firewall-api</td>
-              <td>Instant consistency — bypasses the ~60 s KV propagation window for revocation.</td>
-            </tr>
-            <tr>
               <td><strong>Vectorize</strong></td>
               <td>Embeddings of known attack prompts</td>
               <td>firewall-api (Layer 2)</td>
@@ -1301,7 +1286,7 @@ flowchart TB
         </table>
       </div>
 
-      <p>On every policy write the policy-manager pushes the updated document to both R2 (source of truth) and KV (fast read replica). KV propagates globally in ~60 s; instant key revocation is handled by a Durable Object tombstone checked on every request.</p>
+      <p>On every policy write the policy-manager pushes the updated document to both R2 (source of truth) and KV (fast read replica). KV propagates globally in ~60 s.</p>
     </section>
 
     <!-- ── Latency ── -->
@@ -1589,6 +1574,177 @@ curl -X POST .../api/keys/&lt;id&gt;/rotate -H <span class="str">"Authorization:
               <td>(inherits from signature metadata)</td>
               <td>Per-signature <code>mitreAtlasId</code></td>
             </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr />
+
+    <!-- ── Source walkthrough ── -->
+    <section id="source-index">
+      <h2>Code Walkthrough — <code>firewall-api/index.ts</code></h2>
+      <p>This is the Worker's entry point. Cloudflare calls <code>app.fetch(request, env, ctx)</code> on every incoming HTTP request. Everything starts here.</p>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">typescript · apps/firewall-api/src/index.ts</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code><span class="cm">// ── 1–6  Imports ─────────────────────────────────────────────────────</span>
+<span class="kw">import</span> { Hono } <span class="kw">from</span> <span class="str">'hono'</span>;
+<span class="kw">import</span> { InspectRequestSchema, MAX_PROMPT_BYTES } <span class="kw">from</span> <span class="str">'@firewall/shared'</span>;
+<span class="kw">import type</span> { SecurityProfile } <span class="kw">from</span> <span class="str">'@firewall/shared'</span>;
+<span class="kw">import type</span> { Env } <span class="kw">from</span> <span class="str">'./env.js'</span>;
+<span class="kw">import</span> { authMiddleware } <span class="kw">from</span> <span class="str">'./middleware/auth.js'</span>;
+<span class="kw">import</span> { runPipeline } <span class="kw">from</span> <span class="str">'./pipeline.js'</span>;
+
+<span class="cm">// ── 8  Create the Hono app ────────────────────────────────────────────</span>
+<span class="kw">const</span> app = <span class="kw">new</span> <span class="fn">Hono</span>&lt;{ Bindings: Env }&gt;();
+
+<span class="cm">// ── 10–13  Global error handler ───────────────────────────────────────</span>
+app.<span class="fn">onError</span>((err, c) =&gt; {
+  console.<span class="fn">error</span>(<span class="str">'[firewall-api] unhandled error:'</span>, err);
+  <span class="kw">return</span> c.<span class="fn">json</span>({ error: <span class="str">'Internal server error'</span>, code: <span class="str">'INTERNAL_ERROR'</span> }, <span class="num">500</span>);
+});
+
+<span class="cm">// ── 15–16  Utility routes ─────────────────────────────────────────────</span>
+app.<span class="fn">get</span>(<span class="str">'/'</span>,       c =&gt; c.<span class="fn">text</span>(<span class="str">'AI Firewall API v2'</span>));
+app.<span class="fn">get</span>(<span class="str">'/health'</span>, c =&gt; c.<span class="fn">json</span>({ status: <span class="str">'ok'</span>, version: <span class="num">2</span> }));
+
+<span class="cm">// ── 18  Register the main route with auth middleware ──────────────────</span>
+app.<span class="fn">post</span>(<span class="str">'/v1/inspect'</span>, authMiddleware, <span class="kw">async</span> c =&gt; {
+  <span class="kw">const</span> body = <span class="kw">await</span> c.req.<span class="fn">json</span>();
+
+  <span class="cm">// ── 21–27  Reject oversized prompts early ──────────────────────────</span>
+  <span class="kw">const</span> byteLen = <span class="kw">new</span> <span class="fn">TextEncoder</span>().<span class="fn">encode</span>(body?.prompt ?? <span class="str">''</span>).length;
+  <span class="kw">if</span> (byteLen &gt; MAX_PROMPT_BYTES) {
+    <span class="kw">return</span> c.<span class="fn">json</span>(
+      { error: <span class="str">`Prompt exceeds ${MAX_PROMPT_BYTES} bytes`</span>, code: <span class="str">'PROMPT_TOO_LARGE'</span> },
+      <span class="num">413</span>,
+    );
+  }
+
+  <span class="cm">// ── 29–32  Validate request shape with Zod ─────────────────────────</span>
+  <span class="kw">const</span> parsed = InspectRequestSchema.<span class="fn">safeParse</span>(body);
+  <span class="kw">if</span> (!parsed.success) {
+    <span class="kw">return</span> c.<span class="fn">json</span>({ error: <span class="str">'Validation error'</span>, code: <span class="str">'VALIDATION_ERROR'</span>, details: parsed.error.<span class="fn">flatten</span>() }, <span class="num">400</span>);
+  }
+
+  <span class="cm">// ── 34–36  Read data set by auth middleware ────────────────────────</span>
+  <span class="kw">const</span> profile    = c.<span class="fn">get</span>(<span class="str">'profile'</span> <span class="kw">as never</span>) <span class="kw">as</span> SecurityProfile;
+  <span class="kw">const</span> requestId  = crypto.<span class="fn">randomUUID</span>();
+  <span class="kw">const</span> bypassCache = c.req.<span class="fn">header</span>(<span class="str">'X-Bypass-Cache'</span>) === <span class="str">'1'</span>;
+
+  <span class="cm">// ── 38–40  Run pipeline and return verdict ─────────────────────────</span>
+  <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">runPipeline</span>(parsed.data, profile, c.env, c.executionCtx, requestId, bypassCache);
+  <span class="kw">const</span> status = result.verdict === <span class="str">'block'</span> ? <span class="num">403</span> : <span class="num">200</span>;
+  <span class="kw">return</span> c.<span class="fn">json</span>(result, status);
+});
+
+<span class="cm">// ── 43  Export — Cloudflare calls app.fetch() on every request ────────</span>
+<span class="kw">export default</span> app;</code></pre>
+      </div>
+
+      <div class="table-wrap" style="margin-top:32px;">
+        <table>
+          <thead>
+            <tr><th style="width:80px;">Lines</th><th>What it does and why</th></tr>
+          </thead>
+          <tbody>
+
+            <tr>
+              <td><code>1</code></td>
+              <td><strong>Import Hono.</strong> The web framework. Provides routing (<code>app.post</code>), middleware chaining, and request/response helpers (<code>c.req.json()</code>, <code>c.json()</code>). Without it you'd write a giant <code>if/else</code> on <code>request.url</code> and manually build every <code>new Response()</code>.</td>
+            </tr>
+
+            <tr>
+              <td><code>2</code></td>
+              <td><strong>Import <code>InspectRequestSchema</code> and <code>MAX_PROMPT_BYTES</code></strong> from the shared package. <code>InspectRequestSchema</code> is a Zod schema that validates the request body has the right shape. <code>MAX_PROMPT_BYTES</code> is <code>32 * 1024</code> — the hard cap on prompt size.</td>
+            </tr>
+
+            <tr>
+              <td><code>3</code></td>
+              <td><strong><code>import type</code> — TypeScript only, erased at runtime.</strong> <code>SecurityProfile</code> is used to type the value retrieved from middleware context on line 34. This import produces zero JavaScript output.</td>
+            </tr>
+
+            <tr>
+              <td><code>4</code></td>
+              <td><strong>Import <code>Env</code></strong> — the interface that describes every Cloudflare binding available to this Worker: <code>AI</code>, <code>POLICY_CACHE</code>, <code>VERDICT_CACHE</code>, <code>FIREWALL_VECTORIZE</code>. Typed so <code>c.env.POLICY_CACHE</code> is known to be a <code>KVNamespace</code> at compile time.</td>
+            </tr>
+
+            <tr>
+              <td><code>5</code></td>
+              <td><strong>Import <code>authMiddleware</code>.</strong> This function runs before the route handler on every <code>POST /v1/inspect</code>. It hashes the <code>X-API-Key</code>, does two KV reads to resolve the SecurityProfile, and calls <code>c.set('profile', profile)</code> so the handler can read it on line 34. If auth fails it returns 401 and the handler never runs.</td>
+            </tr>
+
+            <tr>
+              <td><code>6</code></td>
+              <td><strong>Import <code>runPipeline</code>.</strong> The 4-layer detection engine (Layer 0 heuristics → Layer 1 cache → Layer 2 vector → Layer 3 LLM). Called on line 38 after auth and validation pass.</td>
+            </tr>
+
+            <tr>
+              <td><code>8</code></td>
+              <td><strong>Create the Hono app.</strong> <code>new Hono&lt;{ Bindings: Env }&gt;()</code> — the generic parameter tells Hono the shape of <code>c.env</code> so bindings are type-safe inside every route handler. This is just a router object at this point; it becomes a real Worker when exported on line 43.</td>
+            </tr>
+
+            <tr>
+              <td><code>10–13</code></td>
+              <td><strong>Global error handler.</strong> <code>app.onError</code> catches any unhandled exception thrown inside any route or middleware. Without this, a runtime error returns an empty 500 with no body — hard to debug. This ensures every error at least logs to Workers Logs and returns a structured JSON response.</td>
+            </tr>
+
+            <tr>
+              <td><code>15–16</code></td>
+              <td><strong>Utility routes.</strong> <code>GET /</code> returns plain text — useful as a smoke test. <code>GET /health</code> returns <code>{"status":"ok"}</code> — used by uptime monitors. Neither requires auth because no policy data is involved.</td>
+            </tr>
+
+            <tr>
+              <td><code>18</code></td>
+              <td><strong>Register the main route with middleware chaining.</strong> Hono runs arguments left to right: <code>authMiddleware</code> first, then the <code>async c =&gt; {...}</code> handler. If <code>authMiddleware</code> returns a response (401) the handler is never called. This is the same pattern as Express middleware — each function either calls <code>next()</code> to continue or returns a response to short-circuit.</td>
+            </tr>
+
+            <tr>
+              <td><code>19</code></td>
+              <td><strong>Parse the JSON body.</strong> <code>c.req.json()</code> reads and deserialises the request body. We do this before Zod so we can check the byte length on the next line without Zod's overhead.</td>
+            </tr>
+
+            <tr>
+              <td><code>21–27</code></td>
+              <td><strong>Reject oversized prompts before any validation or AI call.</strong> <code>TextEncoder</code> measures the UTF-8 byte length (not character count — a single emoji is 4 bytes). Prompts over 32 KB return <code>413 Payload Too Large</code> immediately. This prevents a malicious caller from sending a 10 MB payload that would slow down the pipeline.</td>
+            </tr>
+
+            <tr>
+              <td><code>29–32</code></td>
+              <td><strong>Zod schema validation.</strong> <code>safeParse</code> returns <code>{ success: false, error }</code> instead of throwing — so we handle bad input gracefully with a 400 and a structured error. <code>parsed.error.flatten()</code> formats the Zod errors into a readable object. If this passes, <code>parsed.data</code> is typed as <code>InspectRequest</code> for the rest of the handler.</td>
+            </tr>
+
+            <tr>
+              <td><code>34</code></td>
+              <td><strong>Read the SecurityProfile from middleware context.</strong> <code>c.get('profile')</code> retrieves the value that <code>authMiddleware</code> stored with <code>c.set('profile', profile)</code>. This is Hono's typed context — a type-safe way to pass data between middleware and handlers within the same request.</td>
+            </tr>
+
+            <tr>
+              <td><code>35</code></td>
+              <td><strong>Generate a request ID.</strong> <code>crypto.randomUUID()</code> is available in the Workers runtime without any import. The ID is returned in the response body and appears in every log line — makes it trivial to trace a specific request through Workers Logs.</td>
+            </tr>
+
+            <tr>
+              <td><code>36</code></td>
+              <td><strong>Bypass cache flag.</strong> If the caller sends <code>X-Bypass-Cache: 1</code>, the Layer 1 verdict cache is skipped — the pipeline always runs all layers. Useful during development when you want to test a prompt without getting back a stale cached verdict.</td>
+            </tr>
+
+            <tr>
+              <td><code>38</code></td>
+              <td><strong>Run the 4-layer pipeline.</strong> Passes in the validated request, the resolved profile, the Worker env (for KV / AI / Vectorize bindings), <code>c.executionCtx</code> (for <code>ctx.waitUntil</code> — used to write the verdict cache after the response is sent), the request ID, and the bypass flag.</td>
+            </tr>
+
+            <tr>
+              <td><code>39</code></td>
+              <td><strong>Map verdict to HTTP status.</strong> Only two outcomes: <code>block → 403</code>, everything else (pass, monitor) → <code>200</code>. Both responses include the full JSON body — the caller always gets violations and latency regardless of status code. This is why <code>firewall-tester</code> had to check <code>res.status !== 200 &amp;&amp; res.status !== 403</code> rather than <code>res.ok</code>.</td>
+            </tr>
+
+            <tr>
+              <td><code>43</code></td>
+              <td><strong>Export default.</strong> Cloudflare's runtime looks for a default export with a <code>fetch(request, env, ctx)</code> method. Hono's app object has exactly that interface — so <code>export default app</code> is all that's needed to wire everything up. The runtime calls this on every HTTP request to the Worker.</td>
+            </tr>
+
           </tbody>
         </table>
       </div>

@@ -25,18 +25,6 @@ async function loadProfile(profileId: string, env: Env): Promise<SecurityProfile
   return profile;
 }
 
-async function isKeyRevoked(keyHash: string, env: Env): Promise<boolean> {
-  try {
-    const doId = env.KEY_REVOCATION.idFromName('global');
-    const stub = env.KEY_REVOCATION.get(doId);
-    const res = await stub.fetch(`https://internal/${keyHash}`);
-    const { revoked } = await res.json<{ revoked: boolean }>();
-    return revoked;
-  } catch {
-    return false; // fail-open
-  }
-}
-
 export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) {
   const rawKey = c.req.header('X-API-Key');
   if (!rawKey) {
@@ -59,12 +47,7 @@ export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) 
     return c.json({ error: 'Profile not found', code: 'PROFILE_NOT_FOUND' }, 500);
   }
 
-  if (await isKeyRevoked(keyHash, c.env)) {
-    return c.json({ error: 'API key has been revoked', code: 'INVALID_API_KEY' }, 401);
-  }
-
   c.set('profile' as never, profile);
-  c.set('keyHash' as never, keyHash);
 
   return next();
 }

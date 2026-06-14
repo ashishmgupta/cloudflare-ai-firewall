@@ -1,35 +1,268 @@
 import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { PROMPT_SETS } from './prompts.js';
-import { insertEvent, queryEvents, getStats, clearEvents } from './db.js';
+import {
+  insertEvent, queryEvents, getStats, clearEvents,
+  getUserByUsername, listUsers, createUser, updateUser, deleteUser, countUsers,
+  createSession, getSession, deleteSession, deleteUserSessions,
+  listInspectKeys, getInspectKey, upsertInspectKey, deleteInspectKey,
+} from './db.js';
+import { hashPassword, generateSalt, generateToken } from './auth.js';
 import { getHtml } from './html.js';
 
 interface Env {
   DB: D1Database;
   ADMIN_TOKEN: string;
-  FIREWALL_API: Fetcher; // Service Binding — avoids workers.dev cross-Worker fetch restriction
+  FIREWALL_API: Fetcher;
   FIREWALL_API_KEY: string;
 }
 
-const app = new Hono<{ Bindings: Env }>();
+interface UserCtx {
+  id: string;
+  username: string;
+  role: 'admin' | 'tester';
+}
 
-// ── Serve UI ──────────────────────────────────────────────────────────────────
+type Vars = { user: UserCtx };
+type AppEnv = { Bindings: Env; Variables: Vars };
+
+const app = new Hono<AppEnv>();
+
+const COOKIE = 'fw_session';
+const SESSION_HOURS = 24;
+
+// ── UI ─────────────────────────────────────────────────────────────────────────
 app.get('/', c => c.html(getHtml()));
 
-// ── Prompt sets (public — static data) ───────────────────────────────────────
+// ── Public: static prompt set catalogue ───────────────────────────────────────
 app.get('/api/prompt-sets', c =>
   c.json(PROMPT_SETS.map(s => ({ id: s.id, name: s.name, description: s.description, items: s.items }))),
 );
 
-// ── Auth middleware for all other /api routes ─────────────────────────────────
-app.use('/api/*', async (c, next) => {
-  const token = c.req.header('X-Admin-Token');
-  if (!token || token !== c.env.ADMIN_TOKEN) {
-    return c.json({ error: 'Unauthorized' }, 401);
+// ── Public: login ─────────────────────────────────────────────────────────────
+app.post('/api/auth/login', async c => {
+  await bootstrapAdmin(c.env);
+
+  let body: { username?: string; password?: string } = {};
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+
+  const { username, password } = body;
+  if (!username?.trim() || !password) {
+    return c.json({ error: 'username and password are required' }, 400);
   }
+
+  const user = await getUserByUsername(c.env.DB, username.trim().toLowerCase());
+  if (!user) return c.json({ error: 'Invalid credentials' }, 401);
+
+  const hash = await hashPassword(password, user.password_salt);
+  if (hash !== user.password_hash) return c.json({ error: 'Invalid credentials' }, 401);
+
+  const token = generateToken();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_HOURS * 3_600_000).toISOString();
+
+  await createSession(c.env.DB, {
+    token,
+    user_id: user.id,
+    username: user.username,
+    role: user.role,
+    expires_at: expiresAt,
+    created_at: now.toISOString(),
+  });
+
+  setCookie(c, COOKIE, token, {
+    httpOnly: true,
+    path: '/',
+    sameSite: 'Strict',
+    maxAge: SESSION_HOURS * 3600,
+  });
+
+  return c.json({ id: user.id, username: user.username, role: user.role });
+});
+
+
+// ── Session middleware: all /api/* routes registered AFTER this require auth ──
+app.use('/api/*', async (c, next) => {
+  const token = getCookie(c, COOKIE) ||
+    (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/, '');
+
+  if (!token) return c.json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' }, 401);
+
+  const session = await getSession(c.env.DB, token);
+  if (!session) return c.json({ error: 'Session expired', code: 'UNAUTHENTICATED' }, 401);
+
+  c.set('user', { id: session.user_id, username: session.username, role: session.role as 'admin' | 'tester' });
   await next();
 });
 
-// ── Run an entire prompt set ──────────────────────────────────────────────────
+// ── Auth: me + logout ──────────────────────────────────────────────────────────
+app.get('/api/auth/me', c => c.json(c.get('user')));
+
+app.post('/api/auth/logout', async c => {
+  const token = getCookie(c, COOKIE);
+  if (token) await deleteSession(c.env.DB, token);
+  deleteCookie(c, COOKIE, { path: '/' });
+  return c.json({ ok: true });
+});
+
+// ── Admin guard helper ─────────────────────────────────────────────────────────
+const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (c.get('user')?.role !== 'admin') {
+    return c.json({ error: 'Admin access required', code: 'FORBIDDEN' }, 403);
+  }
+  await next();
+};
+
+// ── User management (admin only) ───────────────────────────────────────────────
+app.get('/api/users', requireAdmin, async c => c.json(await listUsers(c.env.DB)));
+
+app.post('/api/users', requireAdmin, async c => {
+  const { username, password, role } = await c.req.json<{
+    username: string; password: string; role: string;
+  }>();
+  if (!username?.trim() || !password || !['admin', 'tester'].includes(role)) {
+    return c.json({ error: 'username, password, and role (admin|tester) are required' }, 400);
+  }
+  const salt = generateSalt();
+  const now = new Date().toISOString();
+  try {
+    await createUser(c.env.DB, {
+      id: crypto.randomUUID(),
+      username: username.trim().toLowerCase(),
+      password_hash: await hashPassword(password, salt),
+      password_salt: salt,
+      role: role as 'admin' | 'tester',
+      created_at: now,
+    });
+  } catch (e) {
+    if (String(e).includes('UNIQUE')) return c.json({ error: 'Username already taken' }, 409);
+    throw e;
+  }
+  return c.json({ ok: true }, 201);
+});
+
+app.put('/api/users/:id/role', requireAdmin, async c => {
+  const { role } = await c.req.json<{ role: string }>();
+  if (!['admin', 'tester'].includes(role)) return c.json({ error: 'Invalid role' }, 400);
+  await updateUser(c.env.DB, c.req.param('id'), { role: role as 'admin' | 'tester' });
+  return c.json({ ok: true });
+});
+
+app.put('/api/users/:id/password', requireAdmin, async c => {
+  const { password } = await c.req.json<{ password: string }>();
+  if (!password) return c.json({ error: 'password is required' }, 400);
+  const salt = generateSalt();
+  const hash = await hashPassword(password, salt);
+  const id = c.req.param('id');
+  await updateUser(c.env.DB, id, { password_hash: hash, password_salt: salt });
+  await deleteUserSessions(c.env.DB, id);
+  return c.json({ ok: true });
+});
+
+app.delete('/api/users/:id', requireAdmin, async c => {
+  const id = c.req.param('id');
+  if (c.get('user').id === id) return c.json({ error: 'Cannot delete your own account' }, 400);
+  await deleteUserSessions(c.env.DB, id);
+  await deleteUser(c.env.DB, id);
+  return c.json({ ok: true });
+});
+
+// ── Ad-hoc inspect (auth required — uses server-side key lookup) ───────────────
+app.post('/api/adhoc', async c => {
+  const { prompt, profileId } = await c.req.json<{ prompt: string; profileId: string }>();
+  if (!prompt || !profileId) return c.json({ error: 'prompt and profileId are required' }, 400);
+
+  const inspectKey = await getInspectKey(c.env.DB, profileId);
+  if (!inspectKey) return c.json({ error: 'Profile not configured for inspection', code: 'PROFILE_NOT_FOUND' }, 404);
+
+  const requestBody = JSON.stringify({ prompt });
+  const requestHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-API-Key': '[redacted]',
+  };
+  const t0 = Date.now();
+
+  const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/inspect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': inspectKey.api_key },
+    body: requestBody,
+  });
+
+  const responseBody = await res.text();
+  const wallMs = Date.now() - t0;
+
+  const responseHeaders: Record<string, string> = {};
+  res.headers.forEach((value, key) => { responseHeaders[key] = value; });
+
+  let parsed: Record<string, unknown> = {};
+  try { parsed = JSON.parse(responseBody); } catch { /* malformed */ }
+
+  // Reconstruct latencyMs from headers — body no longer carries it.
+  // Cached responses only emit X-Firewall-Latency-Ms (the cache-hit cost).
+  // Non-cached responses also emit X-Firewall-Layer{n}-Ms for each layer that ran.
+  const isCached = responseHeaders['x-firewall-cached'] === 'true';
+  const totalMs = parseInt(responseHeaders['x-firewall-latency-ms'] || '0') || wallMs;
+  const perLayer: Record<string, number> = {};
+  if (!isCached) {
+    for (const [k, v] of Object.entries(responseHeaders)) {
+      const m = k.match(/^x-firewall-(layer\d+)-ms$/);
+      if (m) perLayer[m[1]] = parseInt(v);
+    }
+  }
+
+  return c.json({
+    status: res.status,
+    statusText: res.statusText,
+    requestMethod: 'POST',
+    requestUrl: 'https://firewall-api/v1/inspect',
+    requestHeaders,
+    requestBody,
+    responseHeaders,
+    responseBody,
+    verdict: parsed.verdict as string | undefined,
+    violations: (parsed.violations as unknown[]) ?? [],
+    latencyMs: { total: totalMs, perLayer },
+    requestId: parsed.requestId as string | undefined,
+    cached: isCached,
+    wallMs,
+    error: parsed.error as string | undefined,
+    code: parsed.code as string | undefined,
+    profileName: inspectKey.profile_name,
+  });
+});
+
+// ── Inspect profiles — available to all authenticated users ────────────────────
+app.get('/api/inspect-profiles', async c =>
+  c.json(await listInspectKeys(c.env.DB)),
+);
+
+// ── Inspect key management (admin only) ────────────────────────────────────────
+app.get('/api/inspect-keys', requireAdmin, async c =>
+  c.json(await listInspectKeys(c.env.DB)),
+);
+
+app.post('/api/inspect-keys', requireAdmin, async c => {
+  const body = await c.req.json<{ profile_id?: string; profile_name?: string; api_key?: string }>();
+  const { profile_id, profile_name, api_key } = body;
+  if (!profile_id?.trim() || !profile_name?.trim() || !api_key?.trim()) {
+    return c.json({ error: 'profile_id, profile_name, and api_key are required' }, 400);
+  }
+  await upsertInspectKey(c.env.DB, {
+    profile_id: profile_id.trim(),
+    profile_name: profile_name.trim(),
+    api_key: api_key.trim(),
+    created_at: new Date().toISOString(),
+  });
+  return c.json({ ok: true }, 201);
+});
+
+app.delete('/api/inspect-keys/:profileId', requireAdmin, async c => {
+  await deleteInspectKey(c.env.DB, c.req.param('profileId'));
+  return c.json({ ok: true });
+});
+
+// ── Run an entire prompt set ───────────────────────────────────────────────────
 app.post('/api/run-set', async c => {
   const { setId } = await c.req.json<{ setId: string }>();
   const set = PROMPT_SETS.find(s => s.id === setId);
@@ -80,7 +313,7 @@ app.post('/api/run-set', async c => {
   });
 });
 
-// ── Events ────────────────────────────────────────────────────────────────────
+// ── Events ─────────────────────────────────────────────────────────────────────
 app.get('/api/events', async c => {
   const { set, verdict, limit = '100', offset = '0' } = c.req.query();
   const rows = await queryEvents(c.env.DB, {
@@ -97,13 +330,25 @@ app.delete('/api/events', async c => {
   return c.json({ ok: true });
 });
 
-// ── Stats ─────────────────────────────────────────────────────────────────────
-app.get('/api/stats', async c => {
-  const stats = await getStats(c.env.DB);
-  return c.json(stats);
-});
+// ── Stats ──────────────────────────────────────────────────────────────────────
+app.get('/api/stats', async c => c.json(await getStats(c.env.DB)));
 
-// ── Internal: run one prompt, store result, return row ────────────────────────
+// ── Bootstrap default admin from ADMIN_TOKEN ───────────────────────────────────
+async function bootstrapAdmin(env: Env): Promise<void> {
+  if ((await countUsers(env.DB)) > 0) return;
+  const salt = generateSalt();
+  const now = new Date().toISOString();
+  await createUser(env.DB, {
+    id: crypto.randomUUID(),
+    username: 'admin',
+    password_hash: await hashPassword(env.ADMIN_TOKEN, salt),
+    password_salt: salt,
+    role: 'admin',
+    created_at: now,
+  });
+}
+
+// ── Internal: run one prompt, store result ─────────────────────────────────────
 async function runAndStore(
   prompt: string,
   promptSet: string,
@@ -111,28 +356,31 @@ async function runAndStore(
   expected: string,
   env: Env,
 ) {
-  const rawRequest = JSON.stringify({ prompt });
+  const requestBody = JSON.stringify({ prompt });
+  const requestHeaders = { 'Content-Type': 'application/json', 'X-API-Key': '[redacted]' };
   const t0 = Date.now();
 
   const res = await env.FIREWALL_API.fetch('https://firewall-api/v1/inspect', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-Key': env.FIREWALL_API_KEY },
-    body: rawRequest,
+    body: requestBody,
   });
 
-  if (!res.ok) {
-    const errBody = await res.text();
-    throw new Error(`HTTP ${res.status}: ${errBody}`);
+  const responseBodyText = await res.text();
+  const responseHeaders: Record<string, string> = {};
+  res.headers.forEach((value, key) => { responseHeaders[key] = value; });
+
+  if (res.status !== 200 && res.status !== 403) {
+    throw new Error(`HTTP ${res.status}: ${responseBodyText}`);
   }
 
-  const data = await res.json<{
+  const data = JSON.parse(responseBodyText) as {
     verdict: string;
     violations: unknown[];
-    latencyMs?: { total?: number };
     requestId?: string;
-  }>();
+  };
 
-  const latencyMs = data.latencyMs?.total ?? (Date.now() - t0);
+  const latencyMs = parseInt(responseHeaders['x-firewall-latency-ms'] || '0') || (Date.now() - t0);
 
   await insertEvent(env.DB, {
     id: crypto.randomUUID(),
@@ -145,8 +393,18 @@ async function runAndStore(
     violations: JSON.stringify(data.violations ?? []),
     latency_ms: latencyMs,
     request_id: data.requestId ?? null,
-    raw_request: rawRequest,
-    raw_response: JSON.stringify(data),
+    raw_request: JSON.stringify({
+      method: 'POST',
+      url: 'https://firewall-api/v1/inspect',
+      headers: requestHeaders,
+      body: { prompt },
+    }),
+    raw_response: JSON.stringify({
+      status: res.status,
+      statusText: res.statusText,
+      headers: responseHeaders,
+      body: data,
+    }),
   });
 
   return {

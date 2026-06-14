@@ -4,9 +4,10 @@ compatibility_date = "2024-12-18"
 account_id = "02fab3c83f2f24ed8457a7575fe03150"
 
 [[d1_databases]]
-binding  = "DB"
-database_name = "firewall-events"
-database_id   = "91379b5b-c82f-4c14-8351-c0d57eca83aa"
+binding        = "DB"
+database_name  = "firewall-events"
+database_id    = "91379b5b-c82f-4c14-8351-c0d57eca83aa"
+migrations_dir = "migrations"
 
 [[services]]
 binding = "FIREWALL_API"

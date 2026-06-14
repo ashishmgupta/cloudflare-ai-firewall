@@ -56,10 +56,6 @@ export const SecurityProfileSchema = z.object({
   name: z.string().min(1).max(128),
   description: z.string().default(''),
   policies: z.array(SecurityPolicySchema).default([]),
-  rateLimit: z
-    .object({ requestsPerMinute: z.number().int().positive() })
-    .nullable()
-    .default(null),
   failOpen: z.boolean().default(true),
   cacheTtlSeconds: z.number().int().positive().default(3600),
   createdAt: z.string(),
@@ -112,11 +108,12 @@ export const InspectResponseSchema = z.object({
   verdict: VerdictSchema,
   profile: z.object({ id: z.string(), name: z.string() }),
   violations: z.array(ViolationSchema),
-  latencyMs: z.object({
-    total: z.number(),
-    perLayer: z.record(z.number()),
-  }),
   cached: z.boolean(),
+  // latencyMs is intentionally absent from the body — use response headers instead:
+  //   X-Firewall-Latency-Ms  total wall-clock for THIS request (accurate even for cache hits)
+  //   X-Firewall-Layer{n}-Ms per-layer breakdown (omitted on cache hits — those layers didn't run)
+  // Kept optional below only so old KV-cached blobs (which still carry latencyMs) parse cleanly.
+  latencyMs: z.object({ total: z.number(), perLayer: z.record(z.number()) }).optional(),
 });
 
 // ─── CRUD schemas (policy-manager) ───────────────────────────────────────────

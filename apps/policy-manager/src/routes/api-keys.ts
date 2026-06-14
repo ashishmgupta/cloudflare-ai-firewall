@@ -14,8 +14,9 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 function generateRawKey(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return 'fw_' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(50));
+  return 'fw_' + Array.from(bytes).map(b => chars[b % 62]).join('');
 }
 
 app.get('/', async c => {

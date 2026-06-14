@@ -19,6 +19,11 @@ bucket_name = "ai-firewall-policies"
 binding = "AUDIT_LOG"
 bucket_name = "ai-firewall-audit"
 
+[[d1_databases]]
+binding        = "DB"
+database_name  = "firewall-events"
+database_id    = "91379b5b-c82f-4c14-8351-c0d57eca83aa"
+
 [vars]
 ENVIRONMENT = "production"
 

@@ -4,6 +4,6 @@ export interface Env {
   POLICY_STORE: R2Bucket;      // profiles/{id}.json, apikeys/{hash}.json, signatures/{id}.json
   AUDIT_LOG: R2Bucket;
   FIREWALL_VECTORIZE?: VectorizeIndex;
-  ADMIN_TOKEN: string;
+  DB: D1Database;
   ENVIRONMENT: string;
 }
