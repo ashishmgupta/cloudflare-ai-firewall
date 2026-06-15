@@ -105,30 +105,33 @@ export interface EventRow {
   ip_address: string | null;
   country: string | null;
   city: string | null;
+  profile_name: string | null;
 }
 
 export async function insertEvent(db: D1Database, e: EventRow): Promise<void> {
   await db.prepare(
     `INSERT INTO events
-       (id,ts,prompt_set,prompt_label,prompt,verdict,expected,violations,latency_ms,request_id,raw_request,raw_response,username,ip_address,country,city)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (id,ts,prompt_set,prompt_label,prompt,verdict,expected,violations,latency_ms,request_id,raw_request,raw_response,username,ip_address,country,city,profile_name)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     e.id, e.ts, e.prompt_set, e.prompt_label, e.prompt, e.verdict,
     e.expected ?? null, e.violations, e.latency_ms, e.request_id ?? null,
     e.raw_request, e.raw_response,
     e.username ?? null, e.ip_address ?? null, e.country ?? null, e.city ?? null,
+    e.profile_name ?? null,
   ).run();
 }
 
 export async function queryEvents(
   db: D1Database,
-  { set, verdict, limit, offset }: { set?: string; verdict?: string; limit: number; offset: number },
+  { set, verdict, profile, limit, offset }: { set?: string; verdict?: string; profile?: string; limit: number; offset: number },
 ): Promise<EventRow[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  if (set)     { conditions.push('prompt_set = ?'); params.push(set); }
-  if (verdict) { conditions.push('verdict = ?');    params.push(verdict); }
+  if (set)     { conditions.push('prompt_set = ?');    params.push(set); }
+  if (verdict) { conditions.push('verdict = ?');       params.push(verdict); }
+  if (profile) { conditions.push('profile_name = ?'); params.push(profile); }
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   params.push(limit, offset);
@@ -138,6 +141,20 @@ export async function queryEvents(
   ).bind(...params).all<EventRow>();
 
   return result.results;
+}
+
+export async function listEventProfiles(db: D1Database): Promise<string[]> {
+  const r = await db
+    .prepare('SELECT DISTINCT profile_name FROM events WHERE profile_name IS NOT NULL ORDER BY profile_name')
+    .all<{ profile_name: string }>();
+  return r.results.map(row => row.profile_name);
+}
+
+export async function getInspectKeyByApiKey(db: D1Database, apiKey: string): Promise<InspectKey | null> {
+  return db
+    .prepare('SELECT * FROM inspect_keys WHERE api_key = ?')
+    .bind(apiKey)
+    .first<InspectKey>();
 }
 
 export async function getStats(db: D1Database) {

@@ -25,10 +25,13 @@ function showApp(user) {
     : 'text-xs font-semibold px-2 py-0.5 rounded' +
       ' bg-gray-800 text-gray-400 border border-gray-700';
   var usersTab = document.getElementById('tab-users');
+  var purgeCacheBtn = document.getElementById('btn-purge-cache');
   if (user.role === 'admin') {
     usersTab.classList.remove('hidden');
+    purgeCacheBtn.classList.remove('hidden');
   } else {
     usersTab.classList.add('hidden');
+    purgeCacheBtn.classList.add('hidden');
   }
   loadPromptSets();
 }
@@ -101,12 +104,11 @@ function checkIcon(verdict, expected) {
     : '<span class="pass-icon text-red-400">✗</span>';
 }
 
-function relTime(ts) {
-  var d = Date.now() - new Date(ts).getTime();
-  if (d < 60000)    return Math.floor(d / 1000)    + 's ago';
-  if (d < 3600000)  return Math.floor(d / 60000)   + 'm ago';
-  if (d < 86400000) return Math.floor(d / 3600000) + 'h ago';
-  return new Date(ts).toLocaleDateString();
+function fmtDatetime(ts) {
+  var d = new Date(ts);
+  var p = function(n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) +
+         ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
 
 var SET_NAMES = {
@@ -233,9 +235,24 @@ function runSet(setId, setName) {
 }
 
 // ── Events ─────────────────────────────────────────────────────────────────────
+function loadEventProfiles() {
+  var sel = document.getElementById('f-profile');
+  api('/api/events-profiles').then(function(profiles) {
+    var current = sel.value;
+    var opts = '<option value="">All Profiles</option>';
+    profiles.forEach(function(p) {
+      opts += '<option value="' + esc(p) + '"' + (p === current ? ' selected' : '') + '>' + esc(p) + '</option>';
+    });
+    sel.innerHTML = opts;
+  }).catch(function() {});
+}
+
 function loadEvents() {
   var set     = document.getElementById('f-set').value;
   var verdict = document.getElementById('f-verdict').value;
+  var profile = document.getElementById('f-profile').value;
+
+  loadEventProfiles();
 
   document.getElementById('evt-loading').classList.remove('hidden');
   document.getElementById('evt-body').innerHTML = '';
@@ -244,6 +261,7 @@ function loadEvents() {
   var qs = new URLSearchParams({ limit: '100', offset: '0' });
   if (set)     qs.set('set', set);
   if (verdict) qs.set('verdict', verdict);
+  if (profile) qs.set('profile', profile);
 
   api('/api/events?' + qs.toString())
     .then(function(rows) {
@@ -252,7 +270,7 @@ function loadEvents() {
 
       if (rows.length === 0) {
         document.getElementById('evt-body').innerHTML =
-          '<tr><td colspan="9" class="py-8 text-center text-gray-600">No events match this filter.</td></tr>';
+          '<tr><td colspan="10" class="py-8 text-center text-gray-600">No events match this filter.</td></tr>';
         return;
       }
 
@@ -260,9 +278,13 @@ function loadEvents() {
       rows.forEach(function(e, idx) {
         var viols = [];
         try { viols = JSON.parse(e.violations || '[]'); } catch(x) {}
+        var hasLlm = viols.some(function(v) { return v.detectedBy === 'llm'; });
         var violLbl = viols.length === 0
           ? '<span class="text-gray-700">—</span>'
           : '<span class="text-xs text-gray-400">' + viols.length + ' detection' + (viols.length > 1 ? 's' : '') + '</span>';
+        if (hasLlm) {
+          violLbl += ' <button onclick="showL3Prompt()" style="font-size:10px;padding:1px 6px;border-radius:4px;background:#1e3a5f;color:#60a5fa;border:1px solid #1d4ed8;cursor:pointer" title="L3 LLM classifier was used — click to view system prompt">L3</button>';
+        }
         var detailId = 'detail-' + idx;
         var userCell = e.username
           ? '<div class="text-xs text-gray-300">' + esc(e.username) + '</div>' +
@@ -270,8 +292,9 @@ function loadEvents() {
           : '<span class="text-gray-700">—</span>';
         html +=
           '<tr class="evt-main-row">' +
-          '<td class="text-gray-500 text-xs">' + relTime(e.ts) + '</td>' +
+          '<td class="text-gray-400 text-xs font-mono" title="' + esc(e.ts) + '">' + fmtDatetime(e.ts) + '</td>' +
           '<td>' + userCell + '</td>' +
+          '<td class="text-xs text-gray-300">' + (e.profile_name ? esc(e.profile_name) : '<span class="text-gray-700">—</span>') + '</td>' +
           '<td class="text-xs text-gray-400">' + esc(SET_NAMES[e.prompt_set] || e.prompt_set) + '</td>' +
           '<td class="text-sm">' + esc(e.prompt_label) + '</td>' +
           '<td><span class="prompt-text" title="' + esc(e.prompt) + '">' + esc(e.prompt) + '</span></td>' +
@@ -284,15 +307,15 @@ function loadEvents() {
           '</td>' +
           '</tr>' +
           '<tr id="' + detailId + '" class="hidden">' +
-          '<td colspan="9" class="pb-4 pt-1">' +
+          '<td colspan="10" class="pb-4 pt-1">' +
             '<div class="grid grid-cols-2 gap-3">' +
               '<div>' +
                 '<div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Request</div>' +
-                '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-green-300 overflow-auto max-h-48">' + esc(fmtJson(e.raw_request)) + '</pre>' +
+                '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-green-300 overflow-auto">' + esc(fmtJson(e.raw_request)) + '</pre>' +
               '</div>' +
               '<div>' +
                 '<div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Response</div>' +
-                '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-blue-300 overflow-auto max-h-48">' + esc(fmtJson(e.raw_response)) + '</pre>' +
+                '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-blue-300 overflow-auto">' + esc(fmtJson(e.raw_response)) + '</pre>' +
               '</div>' +
             '</div>' +
           '</td>' +
@@ -313,13 +336,38 @@ function loadEvents() {
     .catch(function(err) {
       document.getElementById('evt-loading').classList.add('hidden');
       document.getElementById('evt-body').innerHTML =
-        '<tr><td colspan="9" class="py-4 text-red-400 text-sm text-center">' + esc(String(err)) + '</td></tr>';
+        '<tr><td colspan="10" class="py-4 text-red-400 text-sm text-center">' + esc(String(err)) + '</td></tr>';
     });
 }
 
 function confirmClear() {
   if (!confirm('Delete all events? This cannot be undone.')) return;
   api('/api/events', { method: 'DELETE' }).then(function() { loadEvents(); });
+}
+
+function purgeCache() {
+  if (!confirm('Purge verdict cache? Cached results will be re-evaluated on next request.')) return;
+  api('/api/cache', { method: 'DELETE' })
+    .then(function(d) { alert('Cache purged. KV entries removed: ' + d.purged + (d.note ? ' — ' + d.note : '')); })
+    .catch(function(err) { alert('Purge failed: ' + String(err)); });
+}
+
+// ── L3 system prompt modal ─────────────────────────────────────────────────────
+var l3PromptCache = null;
+function showL3Prompt() {
+  document.getElementById('l3-modal').style.display = '';
+  var el = document.getElementById('l3-prompt-text');
+  if (l3PromptCache) { el.textContent = l3PromptCache; return; }
+  el.textContent = 'Loading…';
+  api('/api/l3-prompt')
+    .then(function(d) {
+      l3PromptCache = d.systemPrompt || '(empty)';
+      el.textContent = l3PromptCache;
+    })
+    .catch(function(err) { el.textContent = 'Error: ' + String(err); });
+}
+function closeL3Modal() {
+  document.getElementById('l3-modal').style.display = 'none';
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────────
@@ -1004,7 +1052,7 @@ export function getHtml(): string {
 '    <div class="mb-5 px-4 py-3 bg-gray-900 border border-gray-800 rounded text-sm text-gray-400">\n' +
 '      Event history from all prompt set runs stored in D1. Filter by set or verdict, then click <strong class="text-gray-300">Raw</strong> on any row to inspect the full HTTP request and response exchanged with the firewall API.\n' +
 '    </div>\n' +
-'    <div class="flex items-center gap-3 mb-5">\n' +
+'    <div class="flex items-center gap-3 mb-5 flex-wrap">\n' +
 '      <select id="f-set" style="width:180px">\n' +
 '        <option value="">All Sets</option>\n' +
 '        <option value="sensitive-data">Sensitive Data</option>\n' +
@@ -1018,16 +1066,21 @@ export function getHtml(): string {
 '        <option value="monitor">Monitor</option>\n' +
 '        <option value="pass">Pass</option>\n' +
 '      </select>\n' +
+'      <select id="f-profile" style="width:200px">\n' +
+'        <option value="">All Profiles</option>\n' +
+'      </select>\n' +
 '      <button class="btn-primary" onclick="loadEvents()">Load Events</button>\n' +
 '      <button class="btn-danger" onclick="confirmClear()">Clear All</button>\n' +
+'      <button id="btn-purge-cache" class="btn-danger hidden" onclick="purgeCache()">Purge Cache</button>\n' +
 '      <span id="evt-count" class="text-gray-500 text-sm ml-auto"></span>\n' +
 '    </div>\n' +
 '    <div id="evt-loading" class="hidden text-gray-500 text-sm py-6 flex items-center gap-2"><div class="spinner"></div> Loading…</div>\n' +
 '    <div class="card">\n' +
 '      <table class="tbl w-full">\n' +
 '        <thead><tr>\n' +
-'          <th class="text-left" style="width:90px">Time</th>\n' +
+'          <th class="text-left" style="width:145px">Time</th>\n' +
 '          <th class="text-left" style="width:110px">User</th>\n' +
+'          <th class="text-left" style="width:130px">Profile</th>\n' +
 '          <th class="text-left" style="width:110px">Set</th>\n' +
 '          <th class="text-left" style="width:150px">Label</th>\n' +
 '          <th class="text-left">Prompt</th>\n' +
@@ -1037,7 +1090,7 @@ export function getHtml(): string {
 '          <th class="text-right" style="width:100px">Latency / Raw</th>\n' +
 '        </tr></thead>\n' +
 '        <tbody id="evt-body">\n' +
-'          <tr><td colspan="9" class="py-8 text-center text-gray-600">No events yet — run a prompt set to get started.</td></tr>\n' +
+'          <tr><td colspan="10" class="py-8 text-center text-gray-600">No events yet — run a prompt set to get started.</td></tr>\n' +
 '        </tbody>\n' +
 '      </table>\n' +
 '    </div>\n' +
@@ -1271,6 +1324,22 @@ export function getHtml(): string {
 '  </div>\n' +
 
 '</div>\n' +
+'</div>\n' +
+
+'<!-- L3 system prompt modal -->\n' +
+'<div id="l3-modal" style="display:none;position:fixed;inset:0;z-index:50;background:rgba(0,0,0,0.75)" onclick="if(event.target===this)closeL3Modal()">\n' +
+'  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:780px;max-height:80vh;display:flex;flex-direction:column;background:#111827;border:1px solid #374151;border-radius:8px;overflow:hidden">\n' +
+'    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #374151">\n' +
+'      <div>\n' +
+'        <span style="font-weight:600;color:#f9fafb;font-size:14px">L3 System Prompt</span>\n' +
+'        <span style="font-size:11px;color:#6b7280;margin-left:8px">Fixed · same for every L3 invocation</span>\n' +
+'      </div>\n' +
+'      <button onclick="closeL3Modal()" style="color:#9ca3af;font-size:18px;line-height:1;background:none;border:none;cursor:pointer;padding:0 4px">✕</button>\n' +
+'    </div>\n' +
+'    <div style="overflow:auto;flex:1;padding:16px">\n' +
+'      <pre id="l3-prompt-text" style="font-size:12px;color:#86efac;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.6">Loading…</pre>\n' +
+'    </div>\n' +
+'  </div>\n' +
 '</div>\n' +
 
 '<script>\n' + PAGE_JS + '\n<\/script>\n' +

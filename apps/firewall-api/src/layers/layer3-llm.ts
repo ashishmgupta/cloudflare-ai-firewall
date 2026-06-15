@@ -1,90 +1,133 @@
-import { MODEL_OUTPUT_SCHEMA_DESCRIPTION, ModelOutputSchema } from '@firewall/shared';
-import type { Violation } from '@firewall/shared';
+import { L3ModelOutputSchema } from '@firewall/shared';
+import type { L3Classification } from '@firewall/shared';
+import type { Violation, Setting } from '@firewall/shared';
 import type { Env } from '../env.js';
 import type { ActiveDetection } from './layer0-heuristics.js';
 
-function buildSystemPrompt(activeDetections: ActiveDetection[]): string {
-  const detectionLines = activeDetections.map(ad => {
-    const settingsText = ad.enabledSettings.length > 0
-      ? ad.enabledSettings.map(s => `  - ${s.name}: ${s.description || s.name}`).join('\n')
-      : '  (all behaviors within this detection)';
-    return `Policy: ${ad.policyName}
-  Category: ${ad.categoryName}
-  Detection: ${ad.detection.name} [mode: ${ad.detection.mode}]
-  Enabled settings:
-${settingsText}`;
-  }).join('\n\n');
+// ── Fixed system prompt ────────────────────────────────────────────────────────
+// Never injected with runtime policy state — the model classifies independently
+// using a fixed taxonomy; matching to configured policies happens in code below.
 
-  return `You are a security content classifier. Analyze the user message against the active detection profile below.
-
-## Active Detection Profile
-
-${detectionLines}
+export const SYSTEM_PROMPT = `You are a security content classifier. Analyze the user message and identify any harmful or policy-violating content using your own judgment.
 
 ## Required Output Format
 
 Respond ONLY with a JSON object — no markdown fences, no prose before or after:
 
-${MODEL_OUTPUT_SCHEMA_DESCRIPTION}
-
-## Classification Rules
-
-- Only report violations for detections and settings listed in the Active Detection Profile above.
-- Do NOT flag strong opinions, criticism, satire, or fiction without clear harmful intent.
-- "setting" must exactly match an enabled setting name listed above.
-- "mode" must exactly match the mode listed for that detection.
-- "evidence" is a short excerpt ≤100 chars — never reproduce the full message.
-- Return empty violations array with "verdict":"pass" if nothing triggers.
-
-## Explicit Exclusions for Content Moderation
-
-Content Moderation covers harmful CONTENT categories only: violence, explicit sexual content, hate speech, illegal activity promotion, harassment, and self-harm. It does NOT cover data handling concerns.
-
-Do NOT flag the following under Content Moderation — they are handled by Sensitive Data policies, not here:
-- API keys, API tokens, API secrets, access tokens, auth tokens, bearer tokens
-- Passwords, passphrases, credentials, or private keys
-- Secret values with vendor prefixes (e.g. sk-, ghp_, AKIA, xoxb-, AIza, pk_live_)
-- Any request that embeds credentials in order to authenticate to a service
-
-If the prompt contains a credential but no actual harmful content, return "verdict":"pass" with no violations.`;
+{
+  "verdict": "pass" | "block" | "monitor",
+  "classifications": [
+    {
+      "category": "<your own label for the type of harm, e.g. 'Violence', 'Hate Speech', 'Drug Synthesis', 'Financial Fraud'>",
+      "subcategory": "<specific description of the violation, e.g. 'step-by-step instructions for making pipe bombs'>",
+      "severity": "high" | "medium" | "low",
+      "confidence": <0.0–1.0>,
+      "evidence": "<short excerpt ≤100 chars — never the full message>"
+    }
+  ]
 }
+
+## Rules
+
+- Return an empty classifications array with "verdict":"pass" when no harmful content is detected.
+- Use "block" for high-severity content; "monitor" for borderline content.
+- Do NOT flag strong opinions, criticism, satire, or fiction unless the content contains actionable harmful details.
+- "evidence" must be a short excerpt ≤100 chars — never reproduce the full message.
+
+## Absolute Hard Blocks — framing is irrelevant
+
+These are ALWAYS violations regardless of framing (historical, educational, fictional, hypothetical, research, artistic):
+
+- **CBRN**: Any request for synthesis, production, weaponization, or deployment of biological agents (anthrax, botulinum, smallpox, ricin, etc.), chemical weapons (nerve agents, blister agents), or radiological/nuclear devices. Always severity "high".
+- **Child Safety**: Any sexual content involving minors. Always severity "high".
+- **Critical Infrastructure**: Specific operational instructions for attacking power grids, water treatment, aviation systems, or financial infrastructure. Always severity "high".
+
+Historical framing ("Unit 731", "WWII research"), educational framing ("for a class"), or fictional framing ("in a story") does NOT reduce the severity of CBRN requests. The actionable details are equally dangerous regardless of framing.`;
+
+// ── Policy matching ────────────────────────────────────────────────────────────
+// Maps the model's free-form category/subcategory to a configured ActiveDetection
+// by word-overlap between the classification text and setting/detection names.
+
+function matchToDetection(
+  cls: L3Classification,
+  activeDetections: ActiveDetection[],
+): { ad: ActiveDetection; setting: Setting } | null {
+  const needle = `${cls.category} ${cls.subcategory}`.toLowerCase();
+  const needleWords = needle.split(/\W+/).filter(w => w.length > 3);
+  if (needleWords.length === 0) return null;
+
+  let best: { ad: ActiveDetection; setting: Setting; score: number } | null = null;
+
+  for (const ad of activeDetections) {
+    for (const setting of ad.enabledSettings) {
+      const haystack = `${setting.name} ${setting.description ?? ''}`.toLowerCase();
+      const haystackWords = new Set(haystack.split(/\W+/).filter(w => w.length > 3));
+      const score = needleWords.filter(w => haystackWords.has(w)).length;
+      if (score > 0 && (!best || score > best.score)) {
+        best = { ad, setting, score };
+      }
+    }
+    // Also try matching against the detection name itself
+    const detWords = new Set(ad.detection.name.toLowerCase().split(/\W+/).filter(w => w.length > 3));
+    const score = needleWords.filter(w => detWords.has(w)).length;
+    if (score > 0 && (!best || score > best.score)) {
+      const fallbackSetting: Setting = ad.enabledSettings[0] ?? {
+        id: ad.detection.id,
+        name: ad.detection.name,
+        enabled: true,
+        description: '',
+      };
+      best = { ad, setting: fallbackSetting, score };
+    }
+  }
+
+  return best ? { ad: best.ad, setting: best.setting } : null;
+}
+
+// Hard-block categories that produce a violation even when no configured detection matches.
+const HARD_BLOCK_KEYWORDS = ['cbrn', 'child', 'csam', 'critical'];
+
+function isHardBlock(category: string): boolean {
+  const lower = category.toLowerCase();
+  return HARD_BLOCK_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+const HARD_BLOCK_MITRE = {
+  techniqueId: 'AML.T0054',
+  techniqueName: 'LLM Jailbreak',
+  tactic: 'ml-attack-staging',
+} as const;
+
+// ── Main export ────────────────────────────────────────────────────────────────
 
 export async function checkLayer3Llm(
   prompt: string,
   activeDetections: ActiveDetection[],
   env: Env,
 ): Promise<Violation[]> {
-  const systemPrompt = buildSystemPrompt(activeDetections);
-
-  console.log('[layer3] ── SYSTEM PROMPT ──────────────────────────────────────');
-  console.log(systemPrompt);
   console.log('[layer3] ── USER PROMPT ────────────────────────────────────────');
   console.log(prompt.slice(0, 200));
   console.log('[layer3] ────────────────────────────────────────────────────────');
 
   const result = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
     messages: [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: prompt },
     ],
     max_tokens: 512,
   }) as Record<string, unknown>;
 
-  const r = result as Record<string, unknown>;
-  console.log('[layer3] result type:', typeof r, 'keys:', Object.keys(r ?? {}));
+  console.log('[layer3] result type:', typeof result, 'keys:', Object.keys(result ?? {}));
 
-  // llama-3.3-70b-instruct-fp8-fast returns { response: <object>, tool_calls, usage }
-  // where response is already the parsed JSON — pass it directly to Zod.
-  // Older models return { response: <string> } or a bare string — parse those.
   let jsonToParse: unknown;
-  if (r?.response !== null && typeof r?.response === 'object') {
-    jsonToParse = r.response;
+  if (result?.response !== null && typeof result?.response === 'object') {
+    jsonToParse = result.response;
   } else {
     const raw = (
-      typeof r === 'string' ? r as unknown as string :
-      typeof r?.response === 'string' ? r.response as string :
-      typeof r?.text === 'string' ? r.text as string :
-      JSON.stringify(r)
+      typeof result === 'string' ? result as unknown as string :
+      typeof result?.response === 'string' ? result.response as string :
+      typeof result?.text === 'string' ? result.text as string :
+      JSON.stringify(result)
     ).trim();
     console.log('[layer3] raw response:', raw.slice(0, 300));
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
@@ -94,40 +137,64 @@ export async function checkLayer3Llm(
 
   let parsed;
   try {
-    parsed = ModelOutputSchema.parse(jsonToParse);
+    parsed = L3ModelOutputSchema.parse(jsonToParse);
   } catch (err) {
     console.error('[layer3] parse error:', err);
     return [];
   }
 
-  // Industry-standard confidence floor: discard anything below 0.92.
-  // LLM confidence values are not calibrated probabilities — at 0.92+ the
-  // false-positive rate drops to acceptable levels for auto-block decisions.
-  const MIN_CONFIDENCE = 0.92;
-
+  // Severity-based confidence floors:
+  // High-severity classifications (CBRN, CSAM, explicit violence) need strong
+  // confidence before auto-blocking. Medium/low harms are nuanced — a lower
+  // floor catches real harm while keeping false-positive risk acceptable.
+  const MIN_CONFIDENCE: Record<string, number> = {
+    high:   0.90,
+    medium: 0.70,
+    low:    0.55,
+  };
   const violations: Violation[] = [];
-  for (const mv of parsed.violations) {
-    if (mv.confidence < MIN_CONFIDENCE) {
-      console.log(`[layer3] discarding low-confidence violation: ${mv.detectionName} conf=${mv.confidence}`);
+
+  for (const cls of parsed.classifications) {
+    const floor = MIN_CONFIDENCE[cls.severity] ?? MIN_CONFIDENCE.medium;
+    if (cls.confidence < floor) {
+      console.log(`[layer3] discarding low-confidence classification: ${cls.category} severity=${cls.severity} conf=${cls.confidence} floor=${floor}`);
       continue;
     }
 
-    const ad = activeDetections.find(
-      a => a.detection.name === mv.detectionName && a.policyName === mv.policyName,
-    );
-    if (!ad) continue; // model hallucinated a non-existent detection — discard
+    const match = matchToDetection(cls, activeDetections);
 
-    violations.push({
-      policyName: mv.policyName,
-      categoryName: mv.categoryName,
-      detectionName: mv.detectionName,
-      setting: mv.setting,
-      mode: mv.mode,
-      confidence: mv.confidence,
-      detectedBy: 'llm',
-      evidence: mv.evidence,
-      mitreAtlas: ad.detection.mitreAtlas ?? { techniqueId: 'AML.T0000', techniqueName: 'Custom Rule', tactic: 'ml-attack-staging' },
-    });
+    const hardBlock = isHardBlock(cls.category);
+    const firstAd = activeDetections[0];
+
+    if (match) {
+      violations.push({
+        policyName: match.ad.policyName,
+        categoryName: match.ad.categoryName,
+        detectionName: match.ad.detection.name,
+        setting: match.setting.name,
+        mode: hardBlock ? 'block' : match.ad.detection.mode,
+        confidence: cls.confidence,
+        detectedBy: 'llm',
+        evidence: cls.evidence,
+        mitreAtlas: match.ad.detection.mitreAtlas ?? HARD_BLOCK_MITRE,
+      });
+    } else {
+      // No configured detection matched — but don't discard. The model flagged this
+      // with sufficient confidence; emit it as a global safety catch so nothing slips
+      // through due to policy gaps. Hard blocks are always 'block'; everything else
+      // falls to 'monitor' so the user sees it without auto-blocking.
+      violations.push({
+        policyName: firstAd?.policyName ?? 'Global Safety Policy',
+        categoryName: cls.category,
+        detectionName: cls.category,
+        setting: cls.subcategory || cls.category,
+        mode: hardBlock ? 'block' : 'monitor',
+        confidence: cls.confidence,
+        detectedBy: 'llm',
+        evidence: cls.evidence,
+        mitreAtlas: HARD_BLOCK_MITRE,
+      });
+    }
   }
 
   return violations;

@@ -3,7 +3,7 @@ const html = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Firewall — Policy Manager</title>
+  <title>Cloudflare AI Firewall - Policy Manager</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
@@ -19,11 +19,10 @@ const html = `<!DOCTYPE html>
 
 <!-- ── Login overlay ────────────────────────────────────────────────────────── -->
 <div x-show="!loggedIn" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#03040a;z-index:50">
-  <div style="background:#0d1117;border:1px solid #1f2937;border-radius:12px" class="p-9 w-full max-w-sm">
-    <div class="text-xl font-bold text-white mb-1">AI Firewall</div>
-    <div class="text-gray-500 text-sm mb-6">Policy Manager — Admin sign in</div>
-    <div x-show="loginError" x-cloak class="mb-4 text-red-400 text-sm bg-red-950 border border-red-800 rounded px-3 py-2" x-text="loginError"></div>
-    <div class="space-y-3">
+  <div style="background:#0d1117;border:1px solid #1f2937;border-radius:12px" class="p-9 w-full max-w-sm text-center">
+    <div class="text-2xl font-bold text-white mb-8">Cloudflare AI Firewall<br><span class="text-lg font-semibold text-gray-400">Policy Manager</span></div>
+    <div x-show="loginError" x-cloak class="mb-4 text-red-400 text-sm bg-red-950 border border-red-800 rounded px-3 py-2 text-left" x-text="loginError"></div>
+    <div class="space-y-3 text-left">
       <div>
         <label class="text-xs text-gray-500 uppercase tracking-wider block mb-1">Username</label>
         <input type="text" x-model="loginUsername" @keydown.enter="login()"
@@ -46,8 +45,9 @@ const html = `<!DOCTYPE html>
 
 <nav class="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
   <div class="flex items-center gap-3">
-    <span class="text-xl font-bold text-white">AI Firewall</span>
-    <span class="text-xs text-gray-500 font-mono">v2 · Policy Manager</span>
+    <span class="text-xl font-bold text-white">Cloudflare AI Firewall</span>
+    <span class="text-gray-700 select-none">·</span>
+    <span class="text-sm font-semibold text-gray-400">Policy Manager</span>
   </div>
   <div class="flex items-center gap-3">
     <span class="text-xs bg-blue-900 text-blue-300 border border-blue-700 rounded px-2 py-0.5 font-semibold">ADMIN</span>
@@ -138,149 +138,179 @@ const html = `<!DOCTYPE html>
       No profiles yet. Create one above.
     </div>
 
-    <div class="space-y-4">
+    <div class="space-y-2">
       <template x-for="profile in profiles" :key="profile.id">
-        <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-          <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800 bg-gray-800">
-            <div>
-              <span class="font-semibold text-white" x-text="profile.name"></span>
-              <span class="ml-2 text-xs text-gray-500" x-text="profile.id"></span>
+        <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden" x-data="{ open: false }">
+
+          <!-- ── Collapsed header (always visible) ── -->
+          <div @click="open = !open"
+            class="flex items-center gap-3 px-5 py-3 bg-gray-800 cursor-pointer select-none hover:bg-gray-750 transition-colors"
+            :class="open ? 'border-b border-gray-700' : ''">
+            <!-- Chevron -->
+            <span class="text-gray-500 text-[10px] shrink-0 w-3" x-text="open ? '▼' : '▶'"></span>
+            <!-- Name + ID -->
+            <span class="font-semibold text-white shrink-0" x-text="profile.name"></span>
+            <span class="text-xs text-gray-600 font-mono shrink-0 hidden sm:block" x-text="profile.id.slice(0,8) + '…'"></span>
+            <!-- Collapsed: policy chips + key count -->
+            <div x-show="!open" class="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+              <template x-for="pol in (profile.policies ?? []).filter(p => p.id !== 'policy-custom-rules')" :key="pol.id">
+                <span class="text-xs bg-gray-700 text-gray-300 rounded px-2 py-0.5 shrink-0" x-text="pol.name"></span>
+              </template>
+              <span x-show="getCustomDets(profile).length > 0"
+                class="text-xs bg-blue-950 text-blue-400 border border-blue-800 rounded px-2 py-0.5 shrink-0"
+                x-text="getCustomDets(profile).length + ' custom rule' + (getCustomDets(profile).length > 1 ? 's' : '')"></span>
             </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-gray-400" x-text="(profile.policies?.length ?? 0) + ' policies'"></span>
-              <button @click="openEditProfile(profile)" class="text-xs text-blue-400 hover:underline">Edit</button>
-              <button @click="confirmDeleteProfile(profile.id)" class="text-xs text-red-400 hover:underline">Delete</button>
-            </div>
+            <!-- Expanded: spacer -->
+            <div x-show="open" class="flex-1"></div>
+            <!-- Always-visible: key count + actions -->
+            <span class="text-xs text-gray-600 shrink-0"
+              x-text="apiKeys.filter(k => k.profileId === profile.id).length + ' key' + (apiKeys.filter(k => k.profileId === profile.id).length !== 1 ? 's' : '')"></span>
+            <button @click.stop="openEditProfile(profile)" class="text-xs text-blue-400 hover:underline shrink-0">Edit</button>
+            <button @click.stop="confirmDeleteProfile(profile.id)" class="text-xs text-red-400 hover:underline shrink-0">Delete</button>
           </div>
-          <div class="px-5 py-3">
-            <template x-for="policy in (profile.policies ?? [])" :key="policy.id">
-              <details class="mb-2">
-                <summary class="text-sm font-medium py-1 flex items-center text-gray-200">
-                  <span x-text="policy.name"></span>
-                  <span class="text-xs text-gray-500 ml-2" x-text="'(' + (policy.categories?.length ?? 0) + ' categories)'"></span>
-                  <button @click.stop="removePolicyFromProfile(profile, policy.id)" class="ml-auto text-xs text-red-400 hover:text-red-300 font-normal">Remove</button>
-                </summary>
-                <div class="ml-4 mt-1 space-y-1">
-                  <template x-for="cat in (policy.categories ?? [])" :key="cat.id">
-                    <details class="bg-gray-800 rounded p-2">
-                      <summary class="text-xs font-medium text-gray-300">
-                        <span x-text="cat.name"></span>
-                        <span class="text-gray-500 ml-1" x-text="'(' + (cat.detections?.length ?? 0) + ')'"></span>
-                      </summary>
-                      <div class="ml-3 mt-1 space-y-1">
-                        <template x-for="det in (cat.detections ?? [])" :key="det.id">
-                          <div class="flex items-start gap-2 text-xs py-1">
-                            <span :class="det.mode==='block' ? 'bg-red-950 text-red-400' : 'bg-yellow-950 text-yellow-400'"
-                              class="px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0" x-text="det.mode"></span>
-                            <div>
-                              <span class="font-medium text-gray-200" x-text="det.name"></span>
-                              <div class="text-gray-500 mt-0.5" x-text="(det.settings ?? []).filter(s=>s.enabled).map(s=>s.name).join(', ')"></div>
-                            </div>
+
+          <!-- ── Expanded content ── -->
+          <div x-show="open">
+            <div class="px-5 py-4">
+
+              <!-- Policies -->
+              <div class="mb-1">
+                <template x-for="policy in (profile.policies ?? []).filter(p => p.id !== 'policy-custom-rules')" :key="policy.id">
+                  <details class="mb-2">
+                    <summary class="text-sm font-medium py-1 flex items-center text-gray-200">
+                      <span x-text="policy.name"></span>
+                      <span class="text-xs text-gray-500 ml-2" x-text="'(' + (policy.categories?.length ?? 0) + ' categories)'"></span>
+                      <button @click.stop="removePolicyFromProfile(profile, policy.id)" class="ml-auto text-xs text-red-400 hover:text-red-300 font-normal">Remove</button>
+                    </summary>
+                    <div class="ml-4 mt-1 space-y-1">
+                      <template x-for="cat in (policy.categories ?? [])" :key="cat.id">
+                        <details class="bg-gray-800 rounded p-2">
+                          <summary class="text-xs font-medium text-gray-300">
+                            <span x-text="cat.name"></span>
+                            <span class="text-gray-500 ml-1" x-text="'(' + (cat.detections?.length ?? 0) + ')'"></span>
+                          </summary>
+                          <div class="ml-3 mt-1 space-y-1">
+                            <template x-for="det in (cat.detections ?? [])" :key="det.id">
+                              <div class="flex items-start gap-2 text-xs py-1">
+                                <span :class="det.mode==='block' ? 'bg-red-950 text-red-400' : 'bg-yellow-950 text-yellow-400'"
+                                  class="px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0" x-text="det.mode"></span>
+                                <div>
+                                  <span class="font-medium text-gray-200" x-text="det.name"></span>
+                                  <div class="text-gray-500 mt-0.5" x-text="(det.settings ?? []).filter(s=>s.enabled).map(s=>s.name).join(', ')"></div>
+                                </div>
+                              </div>
+                            </template>
                           </div>
-                        </template>
-                      </div>
-                    </details>
-                  </template>
-                </div>
-              </details>
-            </template>
-            <div x-show="(profile.policies ?? []).length === 0" class="text-xs text-gray-500 py-2">No policies embedded yet.</div>
-            <div class="mt-3 pt-3 border-t border-gray-800 flex items-center gap-2 flex-wrap">
-              <span class="text-xs text-gray-500">Add policy:</span>
-              <template x-for="tpl in templates" :key="tpl">
-                <button @click="addPolicyToProfile(profile, tpl)"
-                  class="text-xs border border-blue-700 text-blue-400 px-2 py-0.5 rounded hover:bg-blue-950"
-                  x-text="tpl.replace(/-/g,' ')"></button>
-              </template>
-            </div>
-
-            <!-- ── Custom Rules ─────────────────────────────────────────── -->
-            <div class="mt-3 pt-3 border-t border-gray-800">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Custom Rules</span>
-                <button @click="openAddCustomRule(profile)" class="text-xs text-blue-400 hover:underline">+ Add Rule</button>
-              </div>
-              <template x-for="det in getCustomDets(profile)" :key="det.id">
-                <div class="flex items-start gap-2 py-1 text-xs">
-                  <span :class="det.mode==='block' ? 'bg-red-950 text-red-400' : 'bg-yellow-950 text-yellow-400'"
-                    class="px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0" x-text="det.mode"></span>
-                  <div class="flex-1 min-w-0">
-                    <span class="font-medium text-gray-200" x-text="det.name"></span>
-                    <span class="text-gray-500 ml-1" x-text="'(' + (det.customPatterns||[]).length + ' patterns)'"></span>
-                    <div class="text-gray-500 mt-0.5 flex flex-wrap gap-1">
-                      <template x-for="(p, i) in (det.customPatterns||[]).slice(0,4)" :key="i">
-                        <span class="inline-block bg-gray-700 text-gray-300 rounded px-1 font-mono truncate max-w-[120px]"
-                          x-text="p.isRegex ? '/' + p.value + '/i' : p.value"></span>
+                        </details>
                       </template>
-                      <span x-show="(det.customPatterns||[]).length > 4" class="text-gray-600"
-                        x-text="'+' + (det.customPatterns.length - 4) + ' more'"></span>
                     </div>
+                  </details>
+                </template>
+                <div x-show="(profile.policies ?? []).filter(p => p.id !== 'policy-custom-rules').length === 0"
+                  class="text-xs text-gray-500 py-2">No policies embedded yet.</div>
+              </div>
+
+              <!-- Add policy -->
+              <div class="pt-3 border-t border-gray-800 flex items-center gap-2 flex-wrap">
+                <span class="text-xs text-gray-500">Add policy:</span>
+                <template x-for="tpl in templates" :key="tpl">
+                  <button @click="addPolicyToProfile(profile, tpl)"
+                    class="text-xs border border-blue-700 text-blue-400 px-2 py-0.5 rounded hover:bg-blue-950"
+                    x-text="tpl.replace(/-/g,' ')"></button>
+                </template>
+              </div>
+
+              <!-- ── Custom Rules ── -->
+              <div class="mt-4 pt-3 border-t border-gray-800">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Custom Rules</span>
+                  <button @click="openAddCustomRule(profile)" class="text-xs text-blue-400 hover:underline">+ Add Rule</button>
+                </div>
+                <template x-for="det in getCustomDets(profile)" :key="det.id">
+                  <div class="flex items-start gap-2 py-1 text-xs">
+                    <span :class="det.mode==='block' ? 'bg-red-950 text-red-400' : 'bg-yellow-950 text-yellow-400'"
+                      class="px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0" x-text="det.mode"></span>
+                    <div class="flex-1 min-w-0">
+                      <span class="font-medium text-gray-200" x-text="det.name"></span>
+                      <span class="text-gray-500 ml-1" x-text="'(' + (det.customPatterns||[]).length + ' patterns)'"></span>
+                      <div class="text-gray-500 mt-0.5 flex flex-wrap gap-1">
+                        <template x-for="(p, i) in (det.customPatterns||[]).slice(0,4)" :key="i">
+                          <span class="inline-block bg-gray-700 text-gray-300 rounded px-1 font-mono truncate max-w-[120px]"
+                            x-text="p.isRegex ? '/' + p.value + '/i' : p.value"></span>
+                        </template>
+                        <span x-show="(det.customPatterns||[]).length > 4" class="text-gray-600"
+                          x-text="'+' + (det.customPatterns.length - 4) + ' more'"></span>
+                      </div>
+                    </div>
+                    <button @click="removeCustomDet(profile, det.id)" class="text-red-400 hover:text-red-300 shrink-0 text-sm leading-none">×</button>
                   </div>
-                  <button @click="removeCustomDet(profile, det.id)" class="text-red-400 hover:text-red-300 shrink-0 text-sm leading-none">×</button>
+                </template>
+                <div x-show="getCustomDets(profile).length === 0 && showCustomDetForm !== profile.id"
+                  class="text-xs text-gray-500 py-1">No custom rules yet.</div>
+
+                <!-- Add form -->
+                <div x-show="showCustomDetForm === profile.id" x-cloak
+                  class="mt-2 bg-gray-800 border border-gray-700 rounded p-3 space-y-2">
+                  <div class="flex gap-2">
+                    <input x-model="customDetForm.name" type="text" placeholder="Rule name *"
+                      class="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500" />
+                    <select x-model="customDetForm.mode" class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200">
+                      <option value="block">Block</option>
+                      <option value="monitor">Monitor</option>
+                    </select>
+                  </div>
+                  <div class="space-y-1">
+                    <template x-for="(p, i) in customDetForm.patterns" :key="i">
+                      <div class="flex items-center gap-1 text-xs">
+                        <span class="bg-gray-700 border border-gray-600 rounded px-2 py-0.5 font-mono flex-1 truncate text-gray-300"
+                          x-text="p.isRegex ? '/' + p.value + '/i' : p.value"></span>
+                        <button @click="removePatternFromDet(i)" class="text-red-400 hover:text-red-300 shrink-0">×</button>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="flex gap-1 items-center">
+                    <input x-model="customPatternInput" @keydown.enter="addPatternToDet()" type="text"
+                      placeholder="Word, phrase or regex…" class="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500" />
+                    <label class="flex items-center gap-1 text-xs shrink-0 cursor-pointer text-gray-400">
+                      <input type="checkbox" x-model="customPatternIsRegex" class="rounded" />
+                      Regex
+                    </label>
+                    <button @click="addPatternToDet()"
+                      class="text-xs bg-gray-600 hover:bg-gray-500 text-gray-200 rounded px-2 py-1 shrink-0">+</button>
+                  </div>
+                  <div class="flex gap-2">
+                    <button @click="saveCustomDetection(profile)"
+                      class="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Save Rule</button>
+                    <button @click="showCustomDetForm=''" class="text-xs text-gray-400 px-3 py-1">Cancel</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── API Keys footer ── -->
+            <div class="px-5 py-4 border-t border-gray-800 bg-gray-800">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">API Keys</span>
+                <button @click="quickCreateKey(profile)" class="text-xs text-blue-400 hover:underline">+ New Key</button>
+              </div>
+              <template x-for="key in apiKeys.filter(k => k.profileId === profile.id)" :key="key.id">
+                <div class="flex items-center gap-3 py-1.5 border-b border-gray-700 last:border-0 text-sm">
+                  <span class="font-medium text-white" x-text="key.name"></span>
+                  <span :class="key.active ? 'bg-green-950 text-green-400' : 'bg-gray-700 text-gray-400'"
+                    class="px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" x-text="key.active ? 'active' : 'revoked'"></span>
+                  <span class="text-xs text-gray-500 shrink-0" x-text="key.createdAt?.slice(0,10)"></span>
+                  <div class="ml-auto flex gap-3 shrink-0">
+                    <button x-show="key.active" @click="rotateKey(key.id)" class="text-xs text-blue-400 hover:underline">Rotate</button>
+                    <button x-show="key.active" @click="revokeKey(key.id)" class="text-xs text-red-400 hover:underline">Revoke</button>
+                    <button @click="deleteKey(key.id)" class="text-xs text-gray-500 hover:underline">Delete</button>
+                  </div>
                 </div>
               </template>
-              <div x-show="getCustomDets(profile).length === 0 && showCustomDetForm !== profile.id"
-                class="text-xs text-gray-500 py-1">No custom rules yet.</div>
+              <div x-show="!apiKeys.filter(k => k.profileId === profile.id).length"
+                class="text-xs text-gray-500 py-1">No API keys yet.</div>
+            </div>
+          </div>
 
-              <!-- Add form -->
-              <div x-show="showCustomDetForm === profile.id" x-cloak
-                class="mt-2 bg-gray-800 border border-gray-700 rounded p-3 space-y-2">
-                <div class="flex gap-2">
-                  <input x-model="customDetForm.name" type="text" placeholder="Rule name *"
-                    class="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500" />
-                  <select x-model="customDetForm.mode" class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200">
-                    <option value="block">Block</option>
-                    <option value="monitor">Monitor</option>
-                  </select>
-                </div>
-                <div class="space-y-1">
-                  <template x-for="(p, i) in customDetForm.patterns" :key="i">
-                    <div class="flex items-center gap-1 text-xs">
-                      <span class="bg-gray-700 border border-gray-600 rounded px-2 py-0.5 font-mono flex-1 truncate text-gray-300"
-                        x-text="p.isRegex ? '/' + p.value + '/i' : p.value"></span>
-                      <button @click="removePatternFromDet(i)" class="text-red-400 hover:text-red-300 shrink-0">×</button>
-                    </div>
-                  </template>
-                </div>
-                <div class="flex gap-1 items-center">
-                  <input x-model="customPatternInput" @keydown.enter="addPatternToDet()" type="text"
-                    placeholder="Word, phrase or regex…" class="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500" />
-                  <label class="flex items-center gap-1 text-xs shrink-0 cursor-pointer text-gray-400">
-                    <input type="checkbox" x-model="customPatternIsRegex" class="rounded" />
-                    Regex
-                  </label>
-                  <button @click="addPatternToDet()"
-                    class="text-xs bg-gray-600 hover:bg-gray-500 text-gray-200 rounded px-2 py-1 shrink-0">+</button>
-                </div>
-                <div class="flex gap-2">
-                  <button @click="saveCustomDetection(profile)"
-                    class="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Save Rule</button>
-                  <button @click="showCustomDetForm=''" class="text-xs text-gray-400 px-3 py-1">Cancel</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="px-5 py-3 border-t border-gray-800 bg-gray-800">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">API Keys</span>
-              <button @click="quickCreateKey(profile)" class="text-xs text-blue-400 hover:underline">+ New Key</button>
-            </div>
-            <template x-for="key in apiKeys.filter(k => k.profileId === profile.id)" :key="key.id">
-              <div class="flex items-center gap-3 py-1.5 border-b border-gray-700 last:border-0 text-sm">
-                <span class="font-medium text-white" x-text="key.name"></span>
-                <span :class="key.active ? 'bg-green-950 text-green-400' : 'bg-gray-700 text-gray-400'"
-                  class="px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" x-text="key.active ? 'active' : 'revoked'"></span>
-                <span class="text-xs text-gray-500 shrink-0" x-text="key.createdAt?.slice(0,10)"></span>
-                <div class="ml-auto flex gap-3 shrink-0">
-                  <button x-show="key.active" @click="rotateKey(key.id)" class="text-xs text-blue-400 hover:underline">Rotate</button>
-                  <button x-show="key.active" @click="revokeKey(key.id)" class="text-xs text-red-400 hover:underline">Revoke</button>
-                  <button @click="deleteKey(key.id)" class="text-xs text-gray-500 hover:underline">Delete</button>
-                </div>
-              </div>
-            </template>
-            <div x-show="!apiKeys.filter(k => k.profileId === profile.id).length"
-              class="text-xs text-gray-500 py-1">No API keys yet.</div>
-          </div>
         </div>
       </template>
     </div>

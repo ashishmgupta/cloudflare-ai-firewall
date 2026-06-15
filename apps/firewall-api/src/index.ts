@@ -15,6 +15,11 @@ app.onError((err, c) => {
 app.get('/', c => c.text('AI Firewall API v2'));
 app.get('/health', c => c.json({ status: 'ok', version: 2 }));
 
+app.get('/v1/debug/l3-prompt', async c => {
+  const { SYSTEM_PROMPT } = await import('./layers/layer3-llm.js');
+  return c.json({ systemPrompt: SYSTEM_PROMPT });
+});
+
 app.get('/v1/profile-info', authMiddleware, async c => {
   const profile = c.get('profile' as never) as SecurityProfile;
   const { getActiveDetections } = await import('./pipeline.js');
@@ -30,6 +35,34 @@ app.get('/v1/profile-info', authMiddleware, async c => {
       settings:      ad.enabledSettings.map(s => ({ id: s.id, name: s.name })),
     })),
   });
+});
+
+app.delete('/v1/cache', authMiddleware, async c => {
+  const { hashPrompt } = await import('./layers/layer1-cache.js');
+  const profile = c.get('profile' as never) as SecurityProfile;
+
+  let body: { prompt?: string } = {};
+  try { body = await c.req.json(); } catch { /* no body = purge all KV */ }
+
+  if (body.prompt) {
+    // Purge a single prompt from both Cache API and KV
+    const hash = await hashPrompt(body.prompt);
+    const cacheKey = `${hash}:${profile.id}`;
+    const cacheApiDeleted = await caches.default.delete(
+      new Request(`https://firewall-cache.internal/${cacheKey}`),
+    );
+    await c.env.VERDICT_CACHE.delete(`verdict:${cacheKey}`);
+    return c.json({ purged: 1, cacheApiDeleted });
+  }
+
+  // No prompt supplied — purge all KV keys for this profile
+  const list = await c.env.VERDICT_CACHE.list({ prefix: 'verdict:' });
+  const profileSuffix = `:${profile.id}`;
+  const toDelete = list.keys
+    .map(k => k.name)
+    .filter(name => name.endsWith(profileSuffix));
+  await Promise.all(toDelete.map(name => c.env.VERDICT_CACHE.delete(name)));
+  return c.json({ purged: toDelete.length, note: 'KV only — Cache API entries expire via TTL' });
 });
 
 app.post('/v1/inspect', authMiddleware, async c => {

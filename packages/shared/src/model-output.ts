@@ -1,38 +1,21 @@
 import { z } from 'zod';
 
-// Single source of truth for the Layer 3 model contract.
-// The schema description is embedded verbatim into the system prompt;
-// the Zod schema parses and validates the model's raw JSON response.
+// Free-form classification schema for Layer 3 model output.
+// The model classifies content using a fixed taxonomy; downstream code
+// matches these classifications to the configured policy structure.
 
-export const ModelViolationSchema = z.object({
-  policyName: z.string(),
-  categoryName: z.string(),
-  detectionName: z.string(),
-  setting: z.string(),
-  mode: z.enum(['block', 'monitor']),
+export const L3ClassificationSchema = z.object({
+  category: z.string(),
+  subcategory: z.string().default(''),
+  severity: z.enum(['high', 'medium', 'low']).default('medium'),
   confidence: z.number().min(0).max(1).default(0.8),
   evidence: z.string().max(200).default(''),
 });
 
-export const ModelOutputSchema = z.object({
+export const L3ModelOutputSchema = z.object({
   verdict: z.enum(['pass', 'block', 'monitor']),
-  violations: z.array(ModelViolationSchema),
+  classifications: z.array(L3ClassificationSchema),
 });
 
-export type ModelViolation = z.infer<typeof ModelViolationSchema>;
-export type ModelOutput = z.infer<typeof ModelOutputSchema>;
-
-export const MODEL_OUTPUT_SCHEMA_DESCRIPTION = `{
-  "verdict": "pass" | "block" | "monitor",
-  "violations": [
-    {
-      "policyName": "<exact policy name from the active profile>",
-      "categoryName": "<exact category name from the active profile>",
-      "detectionName": "<exact detection name from the active profile>",
-      "setting": "<exact enabled setting name that triggered, or repeat detectionName if no sub-settings>",
-      "mode": "<exact mode for that detection: block or monitor>",
-      "confidence": <0.0 to 1.0>,
-      "evidence": "<short excerpt ≤100 chars that triggered — never the full prompt>"
-    }
-  ]
-}`;
+export type L3Classification = z.infer<typeof L3ClassificationSchema>;
+export type L3ModelOutput = z.infer<typeof L3ModelOutputSchema>;

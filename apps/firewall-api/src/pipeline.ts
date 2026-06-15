@@ -125,19 +125,16 @@ export async function runPipeline(
     return response;
   }
 
-  // ── Layer 3: LLM for Content Moderation detections ────────────────────────
-  const l3Detections = activeDetections.filter(
-    ad => ad.detection.id === 'det-content-mod' || ad.categoryName === 'Content Moderation',
-  );
-
-  // Skip L3 on very short prompts — LLM has insufficient context and false-positive
-  // rate is unacceptably high below 8 words (industry standard minimum).
+  // ── Layer 3: LLM semantic classifier ─────────────────────────────────────
+  // Runs against all active detections — the model classifies freely and
+  // matching happens inside checkLayer3Llm. Skipped on very short prompts
+  // where the LLM has insufficient context (industry-standard 8-word floor).
   const wordCount = req.prompt.trim().split(/\s+/).filter(Boolean).length;
 
-  if (l3Detections.length > 0 && wordCount >= 8) {
+  if (wordCount >= 8) {
     const l3t = Date.now();
     try {
-      const l3Violations = await checkLayer3Llm(req.prompt, l3Detections, env);
+      const l3Violations = await checkLayer3Llm(req.prompt, activeDetections, env);
       perLayer['layer3'] = Date.now() - l3t;
       violations.push(...l3Violations);
     } catch (err) {

@@ -162,10 +162,55 @@ const CUSTOM_MITRE_DEFAULT = {
   tactic: 'ml-attack-staging',
 } as const;
 
+const CBRN_MITRE = {
+  techniqueId: 'AML.T0054',
+  techniqueName: 'LLM Jailbreak',
+  tactic: 'ml-attack-staging',
+} as const;
+
+// Dangerous agents — biological, chemical, radiological
+const CBRN_AGENTS = /\b(?:anthrax|botulinum|ricin|sarin|VX|novichok|mustard\s+gas|nerve\s+agent|smallpox|variola|plague\s+bacillus|yersinia\s+pestis|ebola|marburg|bio(?:logical)?\s+(?:agent|weapon)|chem(?:ical)?\s+weapon|weaponized\s+pathogen|radioactive\s+(?:dispersal|weapon)|dirty\s+bomb)\b/i;
+// Weaponization / production verbs — must co-occur with an agent
+const CBRN_ACTION = /\b(?:weaponize|weaponising|synthesize|synthesise|manufacture|produce|cultivate|grow|stabilize|aerosolize|disperse|deploy|extract|purify|culture|ferment)\b/i;
+// Explicit WMD instruction framing — standalone
+const CBRN_EXPLICIT = /\b(?:production\s+process|synthesis\s+(?:route|process|procedure)|step[- ]by[- ]step|how\s+to\s+(?:make|create|produce|weaponize|synthesize))\b.*\b(?:anthrax|botulinum|ricin|sarin|nerve\s+agent|bio(?:logical)?\s+weapon|chem(?:ical)?\s+weapon|smallpox|plague)\b/is;
+
+function checkCbrn(prompt: string): string | null {
+  if (CBRN_EXPLICIT.test(prompt)) {
+    const m = CBRN_AGENTS.exec(prompt);
+    return m ? `CBRN: ${m[0]}` : 'WMD production request';
+  }
+  if (CBRN_AGENTS.test(prompt) && CBRN_ACTION.test(prompt)) {
+    const agent = CBRN_AGENTS.exec(prompt)!;
+    const action = CBRN_ACTION.exec(prompt)!;
+    return `${action[0]} + ${agent[0]}`;
+  }
+  return null;
+}
+
 // ─── Layer 0 entry point ──────────────────────────────────────────────────────
 
 export function runLayer0(prompt: string, activeDetections: ActiveDetection[]): Violation[] {
   const violations: Violation[] = [];
+
+  // Global CBRN hard-check — runs regardless of profile configuration.
+  // Biological/chemical/radiological/nuclear weaponization is never safe
+  // regardless of framing (historical, educational, fictional, hypothetical).
+  const cbrnEvidence = checkCbrn(prompt);
+  if (cbrnEvidence) {
+    const contentMod = activeDetections.find(ad => ad.detection.id === 'det-content-mod');
+    violations.push({
+      policyName:     contentMod?.policyName     ?? 'Global Safety Policy',
+      categoryName:   contentMod?.categoryName   ?? 'CBRN / Indiscriminate Weapons',
+      detectionName:  contentMod?.detection.name ?? 'Harmful Content',
+      setting: 'Indiscriminate Weapons',
+      mode: 'block',
+      confidence: 1.0,
+      detectedBy: 'heuristic',
+      evidence: cbrnEvidence.slice(0, 80),
+      mitreAtlas: CBRN_MITRE,
+    });
+  }
 
   for (const ad of activeDetections) {
     // Content Moderation has no L0 rules — handled entirely by Layer 3

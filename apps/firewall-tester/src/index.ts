@@ -4,6 +4,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { PROMPT_SETS } from './prompts.js';
 import {
   insertEvent, queryEvents, getStats, clearEvents, getAdminStats,
+  listEventProfiles, getInspectKeyByApiKey,
   getUserByUsername, listUsers, createUser, updateUser, deleteUser, countUsers,
   createSession, getSession, deleteSession, deleteUserSessions,
   listInspectKeys, getInspectKey, upsertInspectKey, deleteInspectKey,
@@ -237,6 +238,23 @@ app.get('/api/inspect-profiles', async c =>
   c.json(await listInspectKeys(c.env.DB)),
 );
 
+// ── Cache purge — admin only, proxies DELETE /v1/cache to firewall-api ────────
+app.delete('/api/cache', requireAdmin, async c => {
+  const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/cache', {
+    method: 'DELETE',
+    headers: { 'X-API-Key': c.env.FIREWALL_API_KEY },
+  });
+  const data = await res.json();
+  return c.json(data, res.status as 200);
+});
+
+// ── L3 system prompt — proxies to firewall-api (no auth: static public info) ──
+app.get('/api/l3-prompt', async c => {
+  const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/debug/l3-prompt');
+  const data = await res.json();
+  return c.json(data, res.status as 200);
+});
+
 // ── Inspect profile details — proxies to firewall-api /v1/profile-info ────────
 app.get('/api/inspect-profiles/:profileId/details', async c => {
   const inspectKey = await getInspectKey(c.env.DB, c.req.param('profileId'));
@@ -291,8 +309,11 @@ app.post('/api/run-set', async c => {
     city:       cf?.city    ?? null,
   };
 
+  const inspectKey = await getInspectKeyByApiKey(c.env.DB, c.env.FIREWALL_API_KEY);
+  const profileName = inspectKey?.profile_name ?? null;
+
   const results = await Promise.allSettled(
-    set.items.map(item => runAndStore(item.prompt, setId, item.label, item.expected, c.env, userCtx)),
+    set.items.map(item => runAndStore(item.prompt, setId, item.label, item.expected, c.env, userCtx, profileName)),
   );
 
   const mapped = await Promise.all(results.map(async (r, i) => {
@@ -314,6 +335,7 @@ app.post('/api/run-set', async c => {
         raw_request: JSON.stringify({ prompt: set.items[i].prompt }),
         raw_response: JSON.stringify({ error: errMsg }),
         ...userCtx,
+        profile_name: profileName,
       });
     } catch (dbErr) {
       console.error('[run-set] D1 insert failed:', String(dbErr));
@@ -339,14 +361,20 @@ app.post('/api/run-set', async c => {
 
 // ── Events ─────────────────────────────────────────────────────────────────────
 app.get('/api/events', async c => {
-  const { set, verdict, limit = '100', offset = '0' } = c.req.query();
+  const { set, verdict, profile, limit = '100', offset = '0' } = c.req.query();
   const rows = await queryEvents(c.env.DB, {
     set: set || undefined,
     verdict: verdict || undefined,
+    profile: profile || undefined,
     limit: Number(limit),
     offset: Number(offset),
   });
   return c.json(rows);
+});
+
+app.get('/api/events-profiles', async c => {
+  const profiles = await listEventProfiles(c.env.DB);
+  return c.json(profiles);
 });
 
 app.delete('/api/events', async c => {
@@ -383,6 +411,7 @@ async function runAndStore(
   expected: string,
   env: Env,
   userCtx: { username: string | null; ip_address: string | null; country: string | null; city: string | null },
+  profileName: string | null = null,
 ) {
   const requestBody = JSON.stringify({ prompt });
   const requestHeaders = { 'Content-Type': 'application/json', 'X-API-Key': '[redacted]' };
@@ -434,6 +463,7 @@ async function runAndStore(
       body: data,
     }),
     ...userCtx,
+    profile_name: profileName,
   });
 
   return {
