@@ -21,9 +21,9 @@ function showApp(user) {
   roleEl.textContent = user.role.toUpperCase();
   roleEl.className = user.role === 'admin'
     ? 'text-xs font-semibold px-2 py-0.5 rounded' +
-      ' bg-blue-900 text-blue-300 border border-blue-700'
+      ' bg-indigo-100 text-indigo-700 border border-indigo-200'
     : 'text-xs font-semibold px-2 py-0.5 rounded' +
-      ' bg-gray-800 text-gray-400 border border-gray-700';
+      ' bg-gray-100 text-gray-500 border border-gray-200';
   var usersTab = document.getElementById('tab-users');
   if (user.role === 'admin') {
     usersTab.classList.remove('hidden');
@@ -95,10 +95,10 @@ function badge(v) {
 }
 
 function checkIcon(verdict, expected) {
-  if (!expected) return '<span class="text-gray-600">—</span>';
+  if (!expected) return '<span class="text-gray-400">—</span>';
   return verdict === expected
-    ? '<span class="pass-icon text-green-400">✓</span>'
-    : '<span class="pass-icon text-red-400">✗</span>';
+    ? '<span class="pass-icon text-green-600">✓</span>'
+    : '<span class="pass-icon text-red-500">✗</span>';
 }
 
 function relTime(ts) {
@@ -153,10 +153,10 @@ function loadPromptSets() {
     sets.forEach(function(s) {
       html +=
         '<div class="card flex flex-col" data-set-id="' + esc(s.id) + '" data-set-name="' + esc(s.name) + '">' +
-          '<div class="text-base font-semibold text-white mb-1">' + esc(s.name) + '</div>' +
-          '<div class="text-gray-400 text-xs mb-3 leading-relaxed">' + esc(s.description) + '</div>' +
+          '<div class="text-base font-semibold text-gray-900 mb-1">' + esc(s.name) + '</div>' +
+          '<div class="text-gray-500 text-xs mb-3 leading-relaxed">' + esc(s.description) + '</div>' +
           '<div class="mt-auto flex items-center justify-between">' +
-            '<span class="text-gray-600 text-xs">' + s.items.length + ' prompts</span>' +
+            '<span class="text-gray-400 text-xs">' + s.items.length + ' prompts</span>' +
             '<button class="btn-primary run-set-btn">Run Set</button>' +
           '</div>' +
         '</div>';
@@ -184,7 +184,7 @@ function runSet(setId, setName) {
   document.getElementById('sum-fail-n').textContent  = '…';
   document.getElementById('sum-latency').textContent = '';
   document.getElementById('sum-spinner').classList.remove('hidden');
-  bodyEl.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-gray-600">' +
+  bodyEl.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-gray-400">' +
     '<div class="spinner" style="margin:auto"></div></td></tr>';
 
   api('/api/run-set', { method: 'POST', body: JSON.stringify({ setId: setId }) })
@@ -203,15 +203,15 @@ function runSet(setId, setName) {
       var rows = '';
       data.results.forEach(function(r) {
         var viols = r.error
-          ? '<span class="text-red-400 text-xs mono">' + esc(r.error) + '</span>'
+          ? '<span class="text-red-500 text-xs mono">' + esc(r.error) + '</span>'
           : (r.violations || []).map(function(v) {
-              return '<span class="inline-block bg-gray-800 text-gray-400 rounded px-1 mr-1 text-xs mono">' +
+              return '<span class="inline-block bg-gray-100 text-gray-400 rounded px-1 mr-1 text-xs mono">' +
                 esc(v.detectionName || v.setting || '') + '</span>';
             }).join('') || '<span class="text-gray-700">—</span>';
 
         rows +=
           '<tr>' +
-          '<td><div class="text-sm text-gray-200 font-medium">' + esc(r.label) + '</div>' +
+          '<td><div class="text-sm text-gray-800 font-medium">' + esc(r.label) + '</div>' +
           '<div class="prompt-text" title="' + esc(r.prompt) + '">' + esc(r.prompt) + '</div></td>' +
           '<td>' + badge(r.expected) + '</td>' +
           '<td>' + badge(r.verdict) + '</td>' +
@@ -225,7 +225,7 @@ function runSet(setId, setName) {
     .catch(function(err) {
       document.getElementById('sum-name').textContent = 'Error';
       document.getElementById('sum-spinner').classList.add('hidden');
-      bodyEl.innerHTML = '<tr><td colspan="6" class="py-4 text-red-400 text-sm">' + esc(String(err)) + '</td></tr>';
+      bodyEl.innerHTML = '<tr><td colspan="6" class="py-4 text-red-600 text-sm">' + esc(String(err)) + '</td></tr>';
     })
     .finally(function() {
       document.querySelectorAll('.run-set-btn').forEach(function(b) { b.disabled = false; });
@@ -252,7 +252,7 @@ function loadEvents() {
 
       if (rows.length === 0) {
         document.getElementById('evt-body').innerHTML =
-          '<tr><td colspan="9" class="py-8 text-center text-gray-600">No events match this filter.</td></tr>';
+          '<tr><td colspan="9" class="py-8 text-center text-gray-400">No events match this filter.</td></tr>';
         return;
       }
 
@@ -265,8 +265,8 @@ function loadEvents() {
           : '<span class="text-xs text-gray-400">' + viols.length + ' detection' + (viols.length > 1 ? 's' : '') + '</span>';
         var detailId = 'detail-' + idx;
         var userCell = e.username
-          ? '<div class="text-xs text-gray-300">' + esc(e.username) + '</div>' +
-            (e.country ? '<div class="text-xs text-gray-600">' + flag(e.country) + ' ' + esc(e.country) + (e.city ? ', ' + esc(e.city) : '') + '</div>' : '')
+          ? '<div class="text-xs text-gray-700">' + esc(e.username) + '</div>' +
+            (e.country ? '<div class="text-xs text-gray-400">' + flag(e.country) + ' ' + esc(e.country) + (e.city ? ', ' + esc(e.city) : '') + '</div>' : '')
           : '<span class="text-gray-700">—</span>';
         html +=
           '<tr class="evt-main-row">' +
@@ -280,7 +280,7 @@ function loadEvents() {
           '<td>' + violLbl + '</td>' +
           '<td class="text-right">' +
             '<span class="text-gray-400 text-xs mr-2">' + latencyFmt(e.latency_ms) + '</span>' +
-            '<button class="raw-toggle text-xs text-blue-400 hover:text-blue-300" data-target="' + detailId + '">Raw</button>' +
+            '<button class="raw-toggle text-xs text-indigo-600 hover:text-indigo-800" data-target="' + detailId + '">Raw</button>' +
           '</td>' +
           '</tr>' +
           '<tr id="' + detailId + '" class="hidden">' +
@@ -313,7 +313,7 @@ function loadEvents() {
     .catch(function(err) {
       document.getElementById('evt-loading').classList.add('hidden');
       document.getElementById('evt-body').innerHTML =
-        '<tr><td colspan="9" class="py-4 text-red-400 text-sm text-center">' + esc(String(err)) + '</td></tr>';
+        '<tr><td colspan="9" class="py-4 text-red-600 text-sm text-center">' + esc(String(err)) + '</td></tr>';
     });
 }
 
@@ -387,10 +387,10 @@ function loadStats() {
       var avgMs   = Math.round((s.setLatency.find(function(r) { return r.prompt_set === id; }) || { avg_ms:0 }).avg_ms);
       rows +=
         '<tr>' +
-        '<td class="text-gray-200 font-medium">' + SET_LABELS[i] + '</td>' +
-        '<td class="text-right ' + (block   ? 'text-red-400'    : 'text-gray-600') + '">' + block   + '</td>' +
-        '<td class="text-right ' + (monitor ? 'text-yellow-400' : 'text-gray-600') + '">' + monitor + '</td>' +
-        '<td class="text-right ' + (pass    ? 'text-green-400'  : 'text-gray-600') + '">' + pass    + '</td>' +
+        '<td class="text-gray-800 font-medium">' + SET_LABELS[i] + '</td>' +
+        '<td class="text-right ' + (block   ? 'text-red-600'    : 'text-gray-400') + '">' + block   + '</td>' +
+        '<td class="text-right ' + (monitor ? 'text-yellow-600' : 'text-gray-400') + '">' + monitor + '</td>' +
+        '<td class="text-right ' + (pass    ? 'text-green-600'  : 'text-gray-400') + '">' + pass    + '</td>' +
         '<td class="text-right ' + (error   ? 'text-gray-400'   : 'text-gray-700') + '">' + error   + '</td>' +
         '<td class="text-right text-gray-400">' + tot + '</td>' +
         '<td class="text-right text-gray-400">' + (avgMs ? latencyFmt(avgMs) : '—') + '</td>' +
@@ -406,27 +406,27 @@ function loadStats() {
         a.byUser.forEach(function(u) {
           uRows +=
             '<tr>' +
-            '<td class="text-gray-200 font-medium">' + esc(u.username) + '</td>' +
-            '<td class="text-right text-gray-400">' + u.total + '</td>' +
-            '<td class="text-right ' + (u.blocks   ? 'text-red-400'    : 'text-gray-600') + '">' + u.blocks   + '</td>' +
-            '<td class="text-right ' + (u.monitors ? 'text-yellow-400' : 'text-gray-600') + '">' + u.monitors + '</td>' +
-            '<td class="text-right ' + (u.passes   ? 'text-green-400'  : 'text-gray-600') + '">' + u.passes   + '</td>' +
-            '<td class="text-right text-green-400">' + (u.accuracy != null ? u.accuracy.toFixed(1) + '%' : '—') + '</td>' +
-            '<td class="text-right text-blue-400">'  + (u.avg_ms ? latencyFmt(Math.round(u.avg_ms)) : '—') + '</td>' +
+            '<td class="text-gray-800 font-medium">' + esc(u.username) + '</td>' +
+            '<td class="text-right text-gray-500">' + u.total + '</td>' +
+            '<td class="text-right ' + (u.blocks   ? 'text-red-600'    : 'text-gray-400') + '">' + u.blocks   + '</td>' +
+            '<td class="text-right ' + (u.monitors ? 'text-yellow-600' : 'text-gray-400') + '">' + u.monitors + '</td>' +
+            '<td class="text-right ' + (u.passes   ? 'text-green-600'  : 'text-gray-400') + '">' + u.passes   + '</td>' +
+            '<td class="text-right text-green-600">' + (u.accuracy != null ? u.accuracy.toFixed(1) + '%' : '—') + '</td>' +
+            '<td class="text-right text-indigo-600">'  + (u.avg_ms ? latencyFmt(Math.round(u.avg_ms)) : '—') + '</td>' +
             '</tr>';
         });
-        document.getElementById('s-by-user').innerHTML = uRows || '<tr><td colspan="7" class="py-4 text-center text-gray-600">No data yet.</td></tr>';
+        document.getElementById('s-by-user').innerHTML = uRows || '<tr><td colspan="7" class="py-4 text-center text-gray-400">No data yet.</td></tr>';
 
         var lRows = '';
         a.byLocation.forEach(function(l) {
           lRows +=
             '<tr>' +
-            '<td class="text-gray-200">' + flag(l.country) + ' ' + esc(l.country) + '</td>' +
+            '<td class="text-gray-700">' + flag(l.country) + ' ' + esc(l.country) + '</td>' +
             '<td class="text-gray-400">' + esc(l.city || '—') + '</td>' +
             '<td class="text-right text-gray-400">' + l.total + '</td>' +
             '</tr>';
         });
-        document.getElementById('s-by-location').innerHTML = lRows || '<tr><td colspan="3" class="py-4 text-center text-gray-600">No data yet.</td></tr>';
+        document.getElementById('s-by-location').innerHTML = lRows || '<tr><td colspan="3" class="py-4 text-center text-gray-400">No data yet.</td></tr>';
       }).catch(function(err) { console.error('Admin stats error:', err); });
     } else {
       adminSection.classList.add('hidden');
@@ -476,8 +476,8 @@ function pickSuggestions() {
   var html = '';
   all.forEach(function(s) {
     var isBad    = s.tag !== 'benign';
-    var chipBg   = isBad ? 'background:#2d0a0a;border:1px solid #7f1d1d;color:#fca5a5' : 'background:#052e16;border:1px solid #14532d;color:#86efac';
-    var tagColor = isBad ? '#ef4444' : '#22c55e';
+    var chipBg   = isBad ? 'background:#fef2f2;border:1px solid #fca5a5;color:#374151' : 'background:#f0fdf4;border:1px solid #86efac;color:#374151';
+    var tagColor = isBad ? '#dc2626' : '#16a34a';
     var label    = s.text.length > 55 ? s.text.slice(0, 52) + '…' : s.text;
     html +=
       '<button data-prompt="' + esc(s.text) + '" onclick="usePrompt(this.dataset.prompt)" ' +
@@ -500,7 +500,7 @@ function loadProfileDetails(profileId) {
     .then(function(data) {
       loadingEl.classList.add('hidden');
       if (!data.detections || !data.detections.length) {
-        detailsEl.innerHTML = '<div class="text-xs text-gray-600">No active detections configured.</div>';
+        detailsEl.innerHTML = '<div class="text-xs text-gray-400">No active detections configured.</div>';
         detailsEl.classList.remove('hidden');
         return;
       }
@@ -508,16 +508,16 @@ function loadProfileDetails(profileId) {
       data.detections.forEach(function(d) {
         var modeClass = d.mode === 'block' ? 'badge-block' : 'badge-monitor';
         html +=
-          '<div class="border-l-2 ' + (d.mode === 'block' ? 'border-red-900' : 'border-yellow-900') + ' pl-2">' +
+          '<div class="border-l-2 ' + (d.mode === 'block' ? 'border-red-300' : 'border-yellow-300') + ' pl-2">' +
             '<div class="flex items-center justify-between">' +
               '<div>' +
-                '<span class="text-gray-200 text-xs font-medium">' + esc(d.detectionName) + '</span>' +
-                '<span class="text-gray-600 text-xs ml-1">· ' + esc(d.categoryName) + '</span>' +
+                '<span class="text-gray-700 text-xs font-medium">' + esc(d.detectionName) + '</span>' +
+                '<span class="text-gray-400 text-xs ml-1">· ' + esc(d.categoryName) + '</span>' +
               '</div>' +
               '<span class="badge ' + modeClass + '" style="font-size:10px;padding:1px 6px">' + d.mode.toUpperCase() + '</span>' +
             '</div>' +
             (d.settings && d.settings.length
-              ? '<div class="text-gray-600 text-xs mt-0.5">' + d.settings.map(function(s){ return esc(s.name); }).join(', ') + '</div>'
+              ? '<div class="text-gray-400 text-xs mt-0.5">' + d.settings.map(function(s){ return esc(s.name); }).join(', ') + '</div>'
               : '') +
           '</div>';
       });
@@ -527,7 +527,7 @@ function loadProfileDetails(profileId) {
     })
     .catch(function() {
       loadingEl.classList.add('hidden');
-      detailsEl.innerHTML = '<div class="text-xs text-red-400">Failed to load profile details.</div>';
+      detailsEl.innerHTML = '<div class="text-xs text-red-600">Failed to load profile details.</div>';
       detailsEl.classList.remove('hidden');
     });
 }
@@ -601,9 +601,9 @@ function renderAdhocResult(data) {
 
   var cachedEl = document.getElementById('adhoc-cached');
   if (data.cached === true) {
-    cachedEl.innerHTML = '<span style="font-size:11px;background:#422006;color:#fcd34d;border:1px solid #92400e;border-radius:4px;padding:1px 8px">cached</span>';
+    cachedEl.innerHTML = '<span style="font-size:11px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:1px 8px">cached</span>';
   } else if (data.cached === false) {
-    cachedEl.innerHTML = '<span class="text-xs text-gray-600">live</span>';
+    cachedEl.innerHTML = '<span class="text-xs text-gray-400">live</span>';
   } else {
     cachedEl.innerHTML = '';
   }
@@ -613,7 +613,7 @@ function renderAdhocResult(data) {
   var viols = data.violations || [];
   var violEl = document.getElementById('adhoc-violations');
   if (viols.length === 0) {
-    violEl.innerHTML = '<span class="text-gray-600 text-sm">None</span>';
+    violEl.innerHTML = '<span class="text-gray-400 text-sm">None</span>';
   } else {
     var rows = '<table class="tbl w-full"><thead><tr>' +
       '<th class="text-left">Detection</th>' +
@@ -624,10 +624,10 @@ function renderAdhocResult(data) {
     viols.forEach(function(v) {
       var mitre = v.mitreAtlas ? (v.mitreAtlas.techniqueId + ' — ' + v.mitreAtlas.techniqueName) : '—';
       rows += '<tr>' +
-        '<td class="font-medium text-white">' + esc(v.detectionName || '') + '</td>' +
-        '<td class="text-gray-400">' + esc(v.setting || '') + '</td>' +
+        '<td class="font-medium text-gray-800">' + esc(v.detectionName || '') + '</td>' +
+        '<td class="text-gray-500">' + esc(v.setting || '') + '</td>' +
         '<td>' + badge(v.mode || '') + '</td>' +
-        '<td class="text-xs text-blue-400 mono">' + esc(mitre) + '</td>' +
+        '<td class="text-xs text-indigo-600 mono">' + esc(mitre) + '</td>' +
         '</tr>';
     });
     rows += '</tbody></table>';
@@ -639,21 +639,21 @@ function renderAdhocResult(data) {
   if (lat && typeof lat === 'object') {
     var pills = [];
     if (typeof lat.total === 'number') {
-      pills.push('<span class="inline-flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs">' +
-        '<span class="text-gray-500 uppercase" style="font-size:10px;letter-spacing:.08em">total</span>' +
-        '<span class="text-white font-semibold">' + latencyFmt(lat.total) + '</span></span>');
+      pills.push('<span class="inline-flex items-center gap-1.5 bg-gray-100 border border-gray-200 rounded px-2 py-1 text-xs">' +
+        '<span class="text-gray-400 uppercase" style="font-size:10px;letter-spacing:.08em">total</span>' +
+        '<span class="text-gray-800 font-semibold">' + latencyFmt(lat.total) + '</span></span>');
     }
     var perLayer = lat.perLayer || {};
-    var layerColors = { layer0:'text-green-400', layer1:'text-blue-400', layer2:'text-yellow-400', layer3:'text-red-400' };
+    var layerColors = { layer0:'text-green-600', layer1:'text-indigo-600', layer2:'text-yellow-600', layer3:'text-red-600' };
     Object.keys(perLayer).sort().forEach(function(k) {
-      var col = layerColors[k] || 'text-gray-400';
-      pills.push('<span class="inline-flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs">' +
-        '<span class="text-gray-500 uppercase" style="font-size:10px;letter-spacing:.08em">' + esc(k) + '</span>' +
+      var col = layerColors[k] || 'text-gray-500';
+      pills.push('<span class="inline-flex items-center gap-1.5 bg-gray-100 border border-gray-200 rounded px-2 py-1 text-xs">' +
+        '<span class="text-gray-400 uppercase" style="font-size:10px;letter-spacing:.08em">' + esc(k) + '</span>' +
         '<span class="' + col + ' font-semibold">' + latencyFmt(perLayer[k] || 0) + '</span></span>');
     });
-    latEl.innerHTML = pills.length ? '<div class="flex flex-wrap gap-2">' + pills.join('') + '</div>' : '<span class="text-gray-600">—</span>';
+    latEl.innerHTML = pills.length ? '<div class="flex flex-wrap gap-2">' + pills.join('') + '</div>' : '<span class="text-gray-400">—</span>';
   } else {
-    latEl.innerHTML = '<span class="text-gray-600">—</span>';
+    latEl.innerHTML = '<span class="text-gray-400">—</span>';
   }
 
   var reqLines = [(data.requestMethod || 'POST') + ' /v1/inspect HTTP/1.1'];
@@ -688,11 +688,11 @@ function toggleAdhocRaw(panel) {
 // ── User management ────────────────────────────────────────────────────────────
 function loadUsers() {
   document.getElementById('users-body').innerHTML =
-    '<tr><td colspan="4" class="py-8 text-center text-gray-600"><div class="spinner" style="margin:auto"></div></td></tr>';
+    '<tr><td colspan="4" class="py-8 text-center text-gray-400"><div class="spinner" style="margin:auto"></div></td></tr>';
   api('/api/users').then(function(users) {
     if (!users.length) {
       document.getElementById('users-body').innerHTML =
-        '<tr><td colspan="4" class="py-8 text-center text-gray-600">No users yet.</td></tr>';
+        '<tr><td colspan="4" class="py-8 text-center text-gray-400">No users yet.</td></tr>';
       return;
     }
     var rows = '';
@@ -700,27 +700,27 @@ function loadUsers() {
       var isAdmin = u.role === 'admin';
       var isSelf  = currentUser && currentUser.username === u.username;
       var roleBadge = isAdmin
-        ? '<span class="badge" style="background:#1e3a5f;color:#93c5fd;border:1px solid #1d4ed8">ADMIN</span>'
+        ? '<span class="badge" style="background:#e0e7ff;color:#4338ca;border:1px solid #a5b4fc">ADMIN</span>'
         : '<span class="badge badge-error">TESTER</span>';
       rows +=
         '<tr>' +
-        '<td class="text-white font-medium">' + esc(u.username) +
-          (isSelf ? ' <span class="text-xs text-gray-600 font-normal">(you)</span>' : '') +
+        '<td class="text-gray-800 font-medium">' + esc(u.username) +
+          (isSelf ? ' <span class="text-xs text-gray-400 font-normal">(you)</span>' : '') +
         '</td>' +
         '<td>' + roleBadge + '</td>' +
         '<td class="text-gray-500 text-xs">' + (u.created_at || '').slice(0, 10) + '</td>' +
         '<td class="text-right">' +
-          '<button class="user-role-btn text-xs text-blue-400 hover:text-blue-300 mr-4"' +
+          '<button class="user-role-btn text-xs text-indigo-600 hover:text-indigo-800 mr-4"' +
             ' data-uid="' + esc(u.id) + '" data-new-role="' + (isAdmin ? 'tester' : 'admin') + '">' +
             'Make ' + (isAdmin ? 'Tester' : 'Admin') +
           '</button>' +
-          '<button class="user-pw-btn text-xs text-yellow-400 hover:text-yellow-300 mr-4"' +
+          '<button class="user-pw-btn text-xs text-yellow-600 hover:text-yellow-800 mr-4"' +
             ' data-uid="' + esc(u.id) + '" data-uname="' + esc(u.username) + '">' +
             'Reset PW' +
           '</button>' +
           (isSelf
             ? '<span class="text-xs text-gray-700">Delete</span>'
-            : '<button class="user-del-btn text-xs text-red-400 hover:text-red-300"' +
+            : '<button class="user-del-btn text-xs text-red-500 hover:text-red-700"' +
               ' data-uid="' + esc(u.id) + '" data-uname="' + esc(u.username) + '">Delete</button>'
           ) +
         '</td>' +
@@ -761,7 +761,7 @@ function loadUsers() {
     });
   }).catch(function(err) {
     document.getElementById('users-body').innerHTML =
-      '<tr><td colspan="4" class="py-4 text-red-400 text-sm text-center">' + esc(String(err)) + '</td></tr>';
+      '<tr><td colspan="4" class="py-4 text-red-600 text-sm text-center">' + esc(String(err)) + '</td></tr>';
   });
 }
 
@@ -797,21 +797,21 @@ function loadAdminInspectKeys() {
   if (!currentUser || currentUser.role !== 'admin') return;
   var tbody = document.getElementById('ikeys-body');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-gray-600"><div class="spinner" style="margin:auto"></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-gray-400"><div class="spinner" style="margin:auto"></div></td></tr>';
   api('/api/inspect-keys')
     .then(function(keys) {
       if (!keys.length) {
-        tbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-gray-600">No profiles registered yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-gray-400">No profiles registered yet.</td></tr>';
         return;
       }
       var rows = '';
       keys.forEach(function(k) {
         rows +=
           '<tr>' +
-          '<td class="text-white font-medium">' + esc(k.profile_name) + '</td>' +
+          '<td class="text-gray-800 font-medium">' + esc(k.profile_name) + '</td>' +
           '<td class="text-xs text-gray-500 mono">' + esc(k.profile_id) + '</td>' +
           '<td class="text-right">' +
-            '<button class="ikey-del-btn text-xs text-red-400 hover:text-red-300"' +
+            '<button class="ikey-del-btn text-xs text-red-500 hover:text-red-700"' +
               ' data-pid="' + esc(k.profile_id) + '" data-pname="' + esc(k.profile_name) + '">Remove</button>' +
           '</td>' +
           '</tr>';
@@ -826,7 +826,7 @@ function loadAdminInspectKeys() {
       });
     })
     .catch(function(err) {
-      tbody.innerHTML = '<tr><td colspan="3" class="py-4 text-red-400 text-sm text-center">' + esc(String(err)) + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="3" class="py-4 text-red-600 text-sm text-center">' + esc(String(err)) + '</td></tr>';
     });
 }
 
@@ -883,44 +883,44 @@ export function getHtml(): string {
 'body { font-family: system-ui, -apple-system, sans-serif; }\n' +
 'code, .mono { font-family: ui-monospace, "Cascadia Code", monospace; }\n' +
 '.tab-btn { color: #6b7280; border-bottom: 2px solid transparent; padding: 8px 16px; font-size: 14px; font-weight: 500; cursor: pointer; }\n' +
-'.tab-btn:hover { color: #d1d5db; }\n' +
-'.tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }\n' +
+'.tab-btn:hover { color: #374151; }\n' +
+'.tab-btn.active { color: #4f46e5; border-bottom-color: #4f46e5; }\n' +
 '.badge { display: inline-block; padding: 1px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700; letter-spacing: .03em; }\n' +
-'.badge-block   { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }\n' +
-'.badge-monitor { background: #78350f; color: #fcd34d; border: 1px solid #92400e; }\n' +
-'.badge-pass    { background: #14532d; color: #86efac; border: 1px solid #166534; }\n' +
-'.badge-error   { background: #1f2937; color: #9ca3af; border: 1px solid #374151; }\n' +
-'.tbl th { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#6b7280; padding:8px 12px 8px 0; border-bottom:1px solid #1f2937; }\n' +
-'.tbl td { font-size:13px; padding:10px 12px 10px 0; border-bottom:1px solid #111827; color:#d1d5db; vertical-align:middle; }\n' +
+'.badge-block   { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }\n' +
+'.badge-monitor { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }\n' +
+'.badge-pass    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }\n' +
+'.badge-error   { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }\n' +
+'.tbl th { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#6b7280; padding:8px 12px 8px 0; border-bottom:1px solid #e5e7eb; }\n' +
+'.tbl td { font-size:13px; padding:10px 12px 10px 0; border-bottom:1px solid #f3f4f6; color:#374151; vertical-align:middle; }\n' +
 '.tbl tr:last-child td { border-bottom:none; }\n' +
-'.tbl tr:hover td { background:rgba(255,255,255,.02); }\n' +
-'.card { background:#111827; border:1px solid #1f2937; border-radius:8px; padding:20px; }\n' +
-'.btn-primary { background:#2563eb; color:#fff; padding:6px 14px; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; }\n' +
-'.btn-primary:hover   { background:#1d4ed8; }\n' +
+'.tbl tr:hover td { background:#f9fafb; }\n' +
+'.card { background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; padding:20px; }\n' +
+'.btn-primary { background:#4f46e5; color:#fff; padding:6px 14px; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; }\n' +
+'.btn-primary:hover   { background:#4338ca; }\n' +
 '.btn-primary:disabled{ opacity:.5; cursor:not-allowed; }\n' +
-'.btn-danger { background:#1f2937; color:#f87171; padding:6px 14px; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; }\n' +
-'.btn-danger:hover { background:#7f1d1d; color:#fca5a5; }\n' +
-'select, input[type=password], input[type=text], textarea { background:#1f2937; border:1px solid #374151; border-radius:6px; color:#d1d5db; padding:6px 10px; font-size:13px; }\n' +
-'select:focus, input:focus, textarea:focus { outline:none; border-color:#3b82f6; }\n' +
+'.btn-danger { background:#f9fafb; color:#ef4444; border:1px solid #e5e7eb; padding:6px 14px; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; }\n' +
+'.btn-danger:hover { background:#fef2f2; color:#dc2626; border-color:#fca5a5; }\n' +
+'select, input[type=password], input[type=text], textarea { background:#ffffff; border:1px solid #d1d5db; border-radius:6px; color:#111827; padding:6px 10px; font-size:13px; }\n' +
+'select:focus, input:focus, textarea:focus { outline:none; border-color:#6366f1; box-shadow:0 0 0 2px rgba(99,102,241,.15); }\n' +
 'textarea { resize:vertical; width:100%; font-family:ui-monospace,"Cascadia Code",monospace; }\n' +
-'.spinner { display:inline-block; width:14px; height:14px; border:2px solid #374151; border-top-color:#3b82f6; border-radius:50%; animation:spin .7s linear infinite; }\n' +
+'.spinner { display:inline-block; width:14px; height:14px; border:2px solid #e5e7eb; border-top-color:#4f46e5; border-radius:50%; animation:spin .7s linear infinite; }\n' +
 '@keyframes spin { to { transform:rotate(360deg); } }\n' +
-'.prompt-text { font-family:ui-monospace,monospace; font-size:11px; color:#6b7280; max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }\n' +
+'.prompt-text { font-family:ui-monospace,monospace; font-size:11px; color:#9ca3af; max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }\n' +
 '.pass-icon { font-size:16px; }\n' +
 '.kpi-value { font-size:28px; font-weight:700; line-height:1.1; }\n' +
-'#login-overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#03040a; z-index:50; }\n' +
-'.login-card { background:#0d1117; border:1px solid #1f2937; border-radius:12px; padding:36px; width:100%; max-width:360px; }\n' +
+'#login-overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#f9fafb; z-index:50; }\n' +
+'.login-card { background:#ffffff; border:1px solid #e5e7eb; border-radius:12px; padding:36px; width:100%; max-width:360px; box-shadow:0 1px 3px rgba(0,0,0,.07); }\n' +
 '.login-card input[type=text], .login-card input[type=password] { width:100%; box-sizing:border-box; }\n' +
 '<\/style>\n' +
 '<\/head>\n' +
-'<body class="bg-gray-950 text-gray-200 min-h-screen">\n' +
+'<body class="bg-gray-50 text-gray-900 min-h-screen">\n' +
 
 '<!-- Login overlay -->\n' +
 '<div id="login-overlay">\n' +
 '  <div class="login-card">\n' +
-'    <div class="text-xl font-bold text-white mb-1">Cloudflare AI Firewall</div>\n' +
-'    <div class="text-gray-500 text-sm mb-6">Testing Console &mdash; Sign in to continue</div>\n' +
-'    <div id="login-error" class="hidden text-red-400 text-sm mb-4 bg-red-950 border border-red-800 rounded px-3 py-2"></div>\n' +
+'    <div class="text-xl font-bold text-indigo-700 mb-1">Cloudflare AI Firewall</div>\n' +
+'    <div class="text-gray-400 text-sm mb-6">Testing Console &mdash; Sign in to continue</div>\n' +
+'    <div id="login-error" class="hidden text-red-600 text-sm mb-4 bg-red-50 border border-red-200 rounded px-3 py-2"></div>\n' +
 '    <div class="flex flex-col gap-3">\n' +
 '      <div>\n' +
 '        <label class="text-xs text-gray-500 uppercase tracking-wider block mb-1">Username</label>\n' +
@@ -940,12 +940,12 @@ export function getHtml(): string {
 '<!-- Main app -->\n' +
 '<div id="app" class="hidden min-h-screen">\n' +
 
-'<div class="border-b border-gray-800 bg-gray-900">\n' +
+'<div class="border-b border-gray-200 bg-white">\n' +
 '  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">\n' +
 '    <div class="flex items-center gap-6">\n' +
 '      <div>\n' +
-'        <span class="text-lg font-bold text-white">Cloudflare AI Firewall</span>\n' +
-'        <span class="text-gray-500 text-sm ml-2">Testing Console</span>\n' +
+'        <span class="text-lg font-bold text-indigo-600">Cloudflare AI Firewall</span>\n' +
+'        <span class="text-gray-400 text-sm ml-2">Testing Console</span>\n' +
 '      </div>\n' +
 '      <div class="flex gap-0">\n' +
 '        <button class="tab-btn active" onclick="showTab(\'runner\')" id="tab-runner">Runner</button>\n' +
@@ -956,8 +956,8 @@ export function getHtml(): string {
 '      </div>\n' +
 '    </div>\n' +
 '    <div class="flex items-center gap-3">\n' +
-'      <span id="header-role" class="text-xs font-semibold px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700"></span>\n' +
-'      <span id="header-user" class="text-sm text-white font-medium"></span>\n' +
+'      <span id="header-role" class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200"></span>\n' +
+'      <span id="header-user" class="text-sm text-gray-700 font-medium"></span>\n' +
 '      <button class="btn-danger" onclick="logout()" style="padding:5px 12px;font-size:12px">Sign Out</button>\n' +
 '    </div>\n' +
 '  </div>\n' +
@@ -967,18 +967,18 @@ export function getHtml(): string {
 
 '  <!-- RUNNER -->\n' +
 '  <div id="pane-runner">\n' +
-'    <div class="mb-5 px-4 py-3 bg-gray-900 border border-gray-800 rounded text-sm text-gray-400">\n' +
-'      Select a prompt set below and click <strong class="text-gray-300">Run Set</strong> to send curated prompts through the firewall API. Results compare the expected verdict against the actual verdict returned, and show detected violations with per-request latency.\n' +
+'    <div class="mb-5 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded text-sm text-gray-500">\n' +
+'      Select a prompt set below and click <strong class="text-gray-700">Run Set</strong> to send curated prompts through the firewall API. Results compare the expected verdict against the actual verdict returned, and show detected violations with per-request latency.\n' +
 '    </div>\n' +
 '    <div class="grid grid-cols-3 gap-4 mb-8" id="sets-grid"></div>\n' +
 '    <div id="run-summary" class="hidden mb-4 card flex items-center gap-6">\n' +
-'      <div class="text-sm font-semibold text-white" id="sum-name"></div>\n' +
+'      <div class="text-sm font-semibold text-gray-800" id="sum-name"></div>\n' +
 '      <div class="flex items-center gap-1 text-sm">\n' +
-'        <span class="text-green-400 font-semibold" id="sum-pass-n"></span>\n' +
+'        <span class="text-green-600 font-semibold" id="sum-pass-n"></span>\n' +
 '        <span class="text-gray-500">passed</span>\n' +
 '      </div>\n' +
 '      <div class="flex items-center gap-1 text-sm">\n' +
-'        <span class="text-red-400 font-semibold" id="sum-fail-n"></span>\n' +
+'        <span class="text-red-500 font-semibold" id="sum-fail-n"></span>\n' +
 '        <span class="text-gray-500">failed</span>\n' +
 '      </div>\n' +
 '      <div class="text-gray-500 text-sm" id="sum-latency"></div>\n' +
@@ -1001,8 +1001,8 @@ export function getHtml(): string {
 
 '  <!-- EVENTS -->\n' +
 '  <div id="pane-events" class="hidden">\n' +
-'    <div class="mb-5 px-4 py-3 bg-gray-900 border border-gray-800 rounded text-sm text-gray-400">\n' +
-'      Event history from all prompt set runs stored in D1. Filter by set or verdict, then click <strong class="text-gray-300">Raw</strong> on any row to inspect the full HTTP request and response exchanged with the firewall API.\n' +
+'    <div class="mb-5 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded text-sm text-gray-500">\n' +
+'      Event history from all prompt set runs stored in D1. Filter by set or verdict, then click <strong class="text-gray-700">Raw</strong> on any row to inspect the full HTTP request and response exchanged with the firewall API.\n' +
 '    </div>\n' +
 '    <div class="flex items-center gap-3 mb-5">\n' +
 '      <select id="f-set" style="width:180px">\n' +
@@ -1037,7 +1037,7 @@ export function getHtml(): string {
 '          <th class="text-right" style="width:100px">Latency / Raw</th>\n' +
 '        </tr></thead>\n' +
 '        <tbody id="evt-body">\n' +
-'          <tr><td colspan="9" class="py-8 text-center text-gray-600">No events yet — run a prompt set to get started.</td></tr>\n' +
+'          <tr><td colspan="9" class="py-8 text-center text-gray-400">No events yet — run a prompt set to get started.</td></tr>\n' +
 '        </tbody>\n' +
 '      </table>\n' +
 '    </div>\n' +
@@ -1045,20 +1045,20 @@ export function getHtml(): string {
 
 '  <!-- STATS -->\n' +
 '  <div id="pane-stats" class="hidden">\n' +
-'    <div class="mb-5 px-4 py-3 bg-gray-900 border border-gray-800 rounded text-sm text-gray-400">\n' +
-'      Aggregated metrics across all prompt set runs. <strong class="text-gray-300">Detection Accuracy</strong> measures how often the actual firewall verdict matches the expected label for prompts that have one assigned.\n' +
+'    <div class="mb-5 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded text-sm text-gray-500">\n' +
+'      Aggregated metrics across all prompt set runs. <strong class="text-gray-700">Detection Accuracy</strong> measures how often the actual firewall verdict matches the expected label for prompts that have one assigned.\n' +
 '    </div>\n' +
 '    <div class="grid grid-cols-3 gap-4 mb-6">\n' +
-'      <div class="card"><div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Total Runs</div><div class="kpi-value text-white" id="s-total">—</div></div>\n' +
-'      <div class="card"><div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Detection Accuracy</div><div class="kpi-value text-green-400" id="s-accuracy">—</div><div class="text-xs text-gray-500 mt-1">actual matches expected</div></div>\n' +
-'      <div class="card"><div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Avg Latency</div><div class="kpi-value text-blue-400" id="s-latency">—</div></div>\n' +
+'      <div class="card"><div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Total Runs</div><div class="kpi-value text-gray-900" id="s-total">—</div></div>\n' +
+'      <div class="card"><div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Detection Accuracy</div><div class="kpi-value text-green-600" id="s-accuracy">—</div><div class="text-xs text-gray-500 mt-1">actual matches expected</div></div>\n' +
+'      <div class="card"><div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Avg Latency</div><div class="kpi-value text-indigo-600" id="s-latency">—</div></div>\n' +
 '    </div>\n' +
 '    <div class="grid grid-cols-2 gap-4 mb-6">\n' +
-'      <div class="card"><div class="text-sm font-semibold text-gray-300 mb-4">Verdict Distribution</div><div style="height:220px"><canvas id="c-verdict"></canvas></div></div>\n' +
-'      <div class="card"><div class="text-sm font-semibold text-gray-300 mb-4">Runs by Set &amp; Verdict</div><div style="height:220px"><canvas id="c-sets"></canvas></div></div>\n' +
+'      <div class="card"><div class="text-sm font-semibold text-gray-700 mb-4">Verdict Distribution</div><div style="height:220px"><canvas id="c-verdict"></canvas></div></div>\n' +
+'      <div class="card"><div class="text-sm font-semibold text-gray-700 mb-4">Runs by Set &amp; Verdict</div><div style="height:220px"><canvas id="c-sets"></canvas></div></div>\n' +
 '    </div>\n' +
 '    <div class="card">\n' +
-'      <div class="text-sm font-semibold text-gray-300 mb-4">Set Breakdown</div>\n' +
+'      <div class="text-sm font-semibold text-gray-700 mb-4">Set Breakdown</div>\n' +
 '      <table class="tbl w-full">\n' +
 '        <thead><tr>\n' +
 '          <th class="text-left">Set</th>\n' +
@@ -1076,7 +1076,7 @@ export function getHtml(): string {
 '    <!-- Admin-only: per-user and per-location breakdown -->\n' +
 '    <div id="admin-stats-section" class="hidden">\n' +
 '      <div class="card mt-4">\n' +
-'        <div class="text-sm font-semibold text-gray-300 mb-4">By User</div>\n' +
+'        <div class="text-sm font-semibold text-gray-700 mb-4">By User</div>\n' +
 '        <table class="tbl w-full">\n' +
 '          <thead><tr>\n' +
 '            <th class="text-left">User</th>\n' +
@@ -1091,7 +1091,7 @@ export function getHtml(): string {
 '        </table>\n' +
 '      </div>\n' +
 '      <div class="card mt-4">\n' +
-'        <div class="text-sm font-semibold text-gray-300 mb-4">By Location</div>\n' +
+'        <div class="text-sm font-semibold text-gray-700 mb-4">By Location</div>\n' +
 '        <table class="tbl w-full">\n' +
 '          <thead><tr>\n' +
 '            <th class="text-left">Country</th>\n' +
@@ -1107,14 +1107,14 @@ export function getHtml(): string {
 
 '  <!-- INSPECT -->\n' +
 '  <div id="pane-inspect" class="hidden">\n' +
-'    <div class="mb-5 px-4 py-3 bg-gray-900 border border-gray-800 rounded text-sm text-gray-400">\n' +
-'      Test any prompt ad-hoc against a registered Security Profile. Select a profile, enter your prompt, and click <strong class="text-gray-300">Inspect Prompt</strong> to see the full verdict, detected violations, and per-layer latency breakdown. Admins register available profiles with their API keys in the Users tab — the key is never exposed to the browser.\n' +
+'    <div class="mb-5 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded text-sm text-gray-500">\n' +
+'      Test any prompt ad-hoc against a registered Security Profile. Select a profile, enter your prompt, and click <strong class="text-gray-700">Inspect Prompt</strong> to see the full verdict, detected violations, and per-layer latency breakdown. Admins register available profiles with their API keys in the Users tab — the key is never exposed to the browser.\n' +
 '    </div>\n' +
 '    <div class="grid grid-cols-2 gap-6 mb-6">\n' +
 '      <div class="card flex flex-col">\n' +
 '        <div class="flex items-center justify-between mb-2">\n' +
-'          <div class="text-sm font-semibold text-gray-300">Prompt</div>\n' +
-'          <div class="text-xs text-gray-600">click a sample or write your own</div>\n' +
+'          <div class="text-sm font-semibold text-gray-700">Prompt</div>\n' +
+'          <div class="text-xs text-gray-400">click a sample below or write your own</div>\n' +
 '        </div>\n' +
 '        <div id="adhoc-suggestions" class="flex flex-wrap gap-1.5 mb-3"></div>\n' +
 '        <textarea id="adhoc-prompt" rows="8" placeholder="Type any prompt or pick a sample above…" style="flex:1"></textarea>\n' +
@@ -1137,27 +1137,27 @@ export function getHtml(): string {
 '        </div>\n' +
 '      </div>\n' +
 '    </div>\n' +
-'    <div id="adhoc-error" class="hidden card mb-4 text-red-400 text-sm"></div>\n' +
+'    <div id="adhoc-error" class="hidden card mb-4 text-red-600 text-sm border-red-200 bg-red-50"></div>\n' +
 '    <div id="adhoc-result" class="hidden">\n' +
 '      <div class="card mb-4 flex items-center gap-4">\n' +
 '        <div id="adhoc-verdict"></div>\n' +
-'        <div class="text-xs text-gray-600 mono flex-1 truncate" id="adhoc-reqid"></div>\n' +
+'        <div class="text-xs text-gray-400 mono flex-1 truncate" id="adhoc-reqid"></div>\n' +
 '        <div id="adhoc-cached"></div>\n' +
 '        <div class="text-gray-400 text-sm font-semibold" id="adhoc-wall"></div>\n' +
 '      </div>\n' +
 '      <div class="card mb-4">\n' +
-'        <div class="text-sm font-semibold text-gray-300 mb-3">Violations</div>\n' +
+'        <div class="text-sm font-semibold text-gray-700 mb-3">Violations</div>\n' +
 '        <div id="adhoc-violations"></div>\n' +
 '      </div>\n' +
 '      <div class="card mb-4">\n' +
-'        <div class="text-sm font-semibold text-gray-300 mb-3">Layer Latency</div>\n' +
+'        <div class="text-sm font-semibold text-gray-700 mb-3">Layer Latency</div>\n' +
 '        <div id="adhoc-latency"></div>\n' +
 '      </div>\n' +
 '      <div class="grid grid-cols-2 gap-4">\n' +
 '        <div class="card">\n' +
 '          <div class="flex items-center justify-between mb-2">\n' +
 '            <div class="text-xs text-gray-500 uppercase tracking-wider">Raw Request</div>\n' +
-'            <button id="adhoc-raw-req-btn" class="text-xs text-blue-400 hover:text-blue-300" onclick="toggleAdhocRaw(\'req\')">Hide</button>\n' +
+'            <button id="adhoc-raw-req-btn" class="text-xs text-indigo-600 hover:text-indigo-800" onclick="toggleAdhocRaw(\'req\')">Hide</button>\n' +
 '          </div>\n' +
 '          <div id="adhoc-raw-req-panel">\n' +
 '            <pre id="adhoc-raw-req" class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-green-300 overflow-auto max-h-64"></pre>\n' +
@@ -1166,7 +1166,7 @@ export function getHtml(): string {
 '        <div class="card">\n' +
 '          <div class="flex items-center justify-between mb-2">\n' +
 '            <div class="text-xs text-gray-500 uppercase tracking-wider">Raw Response</div>\n' +
-'            <button id="adhoc-raw-res-btn" class="text-xs text-blue-400 hover:text-blue-300" onclick="toggleAdhocRaw(\'res\')">Hide</button>\n' +
+'            <button id="adhoc-raw-res-btn" class="text-xs text-indigo-600 hover:text-indigo-800" onclick="toggleAdhocRaw(\'res\')">Hide</button>\n' +
 '          </div>\n' +
 '          <div id="adhoc-raw-res-panel">\n' +
 '            <pre id="adhoc-raw-res" class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-blue-300 overflow-auto max-h-64"></pre>\n' +
@@ -1178,15 +1178,15 @@ export function getHtml(): string {
 
 '  <!-- USERS + INSPECT PROFILES (admin only) -->\n' +
 '  <div id="pane-users" class="hidden">\n' +
-'    <div class="mb-5 px-4 py-3 bg-gray-900 border border-gray-800 rounded text-sm text-gray-400">\n' +
-'      Manage console accounts and register Security Profiles for the Inspect tab. <strong class="text-gray-300">Tester</strong> accounts can access Runner, Events, Stats, and Inspect. <strong class="text-gray-300">Admin</strong> accounts have full access including this tab. Use <strong class="text-gray-300">Inspection Profiles</strong> below to link a Security Profile name to its API key — the key is stored server-side and never sent to the browser.\n' +
+'    <div class="mb-5 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded text-sm text-gray-500">\n' +
+'      Manage console accounts and register Security Profiles for the Inspect tab. <strong class="text-gray-700">Tester</strong> accounts can access Runner, Events, Stats, and Inspect. <strong class="text-gray-700">Admin</strong> accounts have full access including this tab. Use <strong class="text-gray-700">Inspection Profiles</strong> below to link a Security Profile name to its API key — the key is stored server-side and never sent to the browser.\n' +
 '    </div>\n' +
 '    <div class="flex items-center justify-between mb-5">\n' +
-'      <div class="text-sm font-semibold text-gray-300">User Management</div>\n' +
+'      <div class="text-sm font-semibold text-gray-700">User Management</div>\n' +
 '      <button class="btn-primary" onclick="showCreateUser()">+ New User</button>\n' +
 '    </div>\n' +
 '    <div id="create-user-form" class="hidden card mb-5">\n' +
-'      <div class="text-sm font-semibold text-gray-200 mb-4">Create User</div>\n' +
+'      <div class="text-sm font-semibold text-gray-700 mb-4">Create User</div>\n' +
 '      <div class="grid grid-cols-3 gap-4">\n' +
 '        <div>\n' +
 '          <label class="text-xs text-gray-500 uppercase tracking-wider block mb-1">Username</label>\n' +
@@ -1209,7 +1209,7 @@ export function getHtml(): string {
 '      <div class="mt-4 flex items-center gap-3">\n' +
 '        <button class="btn-primary" onclick="submitCreateUser()">Create</button>\n' +
 '        <button class="btn-danger" onclick="hideCreateUser()">Cancel</button>\n' +
-'        <span id="cu-error" class="hidden text-red-400 text-sm"></span>\n' +
+'        <span id="cu-error" class="hidden text-red-600 text-sm"></span>\n' +
 '      </div>\n' +
 '    </div>\n' +
 '    <div class="card">\n' +
@@ -1221,7 +1221,7 @@ export function getHtml(): string {
 '          <th class="text-right" style="width:220px">Actions</th>\n' +
 '        </tr></thead>\n' +
 '        <tbody id="users-body">\n' +
-'          <tr><td colspan="4" class="py-8 text-center text-gray-600">Loading…</td></tr>\n' +
+'          <tr><td colspan="4" class="py-8 text-center text-gray-400">Loading…</td></tr>\n' +
 '        </tbody>\n' +
 '      </table>\n' +
 '    </div>\n' +
@@ -1229,13 +1229,13 @@ export function getHtml(): string {
 '    <!-- Inspection profiles -->\n' +
 '    <div class="flex items-center justify-between mt-10 mb-5">\n' +
 '      <div>\n' +
-'        <div class="text-sm font-semibold text-gray-300">Inspection Profiles</div>\n' +
-'        <div class="text-xs text-gray-600 mt-0.5">Link a Security Profile to its API key so testers can use it in the Inspect tab.</div>\n' +
+'        <div class="text-sm font-semibold text-gray-700">Inspection Profiles</div>\n' +
+'        <div class="text-xs text-gray-500 mt-0.5">Link a Security Profile to its API key so testers can use it in the Inspect tab.</div>\n' +
 '      </div>\n' +
 '      <button class="btn-primary" onclick="showAddInspectKey()">+ Add Profile</button>\n' +
 '    </div>\n' +
 '    <div id="add-ikey-form" class="hidden card mb-5">\n' +
-'      <div class="text-sm font-semibold text-gray-200 mb-4">Register Inspection Profile</div>\n' +
+'      <div class="text-sm font-semibold text-gray-700 mb-4">Register Inspection Profile</div>\n' +
 '      <div class="grid grid-cols-3 gap-4">\n' +
 '        <div>\n' +
 '          <label class="text-xs text-gray-500 uppercase tracking-wider block mb-1">Profile Name</label>\n' +
@@ -1253,7 +1253,7 @@ export function getHtml(): string {
 '      <div class="mt-4 flex items-center gap-3">\n' +
 '        <button class="btn-primary" onclick="submitAddInspectKey()">Save</button>\n' +
 '        <button class="btn-danger" onclick="hideAddInspectKey()">Cancel</button>\n' +
-'        <span id="ikey-error" class="hidden text-red-400 text-sm"></span>\n' +
+'        <span id="ikey-error" class="hidden text-red-600 text-sm"></span>\n' +
 '      </div>\n' +
 '    </div>\n' +
 '    <div class="card">\n' +
@@ -1264,7 +1264,7 @@ export function getHtml(): string {
 '          <th class="text-right" style="width:80px">Actions</th>\n' +
 '        </tr></thead>\n' +
 '        <tbody id="ikeys-body">\n' +
-'          <tr><td colspan="3" class="py-6 text-center text-gray-600">Loading…</td></tr>\n' +
+'          <tr><td colspan="3" class="py-6 text-center text-gray-400">Loading…</td></tr>\n' +
 '        </tbody>\n' +
 '      </table>\n' +
 '    </div>\n' +
