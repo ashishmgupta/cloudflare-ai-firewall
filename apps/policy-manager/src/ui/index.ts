@@ -8,33 +8,34 @@ const html = `<!DOCTYPE html>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
-    .tab-active { border-bottom-color: #4f46e5; color: #4f46e5; }
+    .tab-active { border-bottom-color: #3b82f6; color: #fff; }
     details > summary { cursor: pointer; list-style: none; }
-    details > summary::before { content: '▶ '; font-size: 0.65rem; color: #9ca3af; }
+    details > summary::before { content: '▶ '; font-size: 0.65rem; color: #6b7280; }
     details[open] > summary::before { content: '▼ '; }
+    input, select, textarea { color-scheme: dark; }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-900 min-h-screen" x-data="app()" x-init="init()">
+<body class="bg-gray-950 text-gray-200 min-h-screen" x-data="app()" x-init="init()">
 
 <!-- ── Login overlay ────────────────────────────────────────────────────────── -->
-<div x-show="!loggedIn" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#f9fafb;z-index:50">
-  <div class="bg-white border border-gray-200 rounded-xl p-9 w-full max-w-sm shadow-sm">
-    <div class="text-xl font-bold text-indigo-700 mb-1">AI Firewall</div>
-    <div class="text-gray-400 text-sm mb-6">Policy Manager — Admin sign in</div>
-    <div x-show="loginError" x-cloak class="mb-4 text-red-600 text-sm bg-red-50 border border-red-200 rounded px-3 py-2" x-text="loginError"></div>
+<div x-show="!loggedIn" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#03040a;z-index:50">
+  <div style="background:#0d1117;border:1px solid #1f2937;border-radius:12px" class="p-9 w-full max-w-sm">
+    <div class="text-xl font-bold text-white mb-1">AI Firewall</div>
+    <div class="text-gray-500 text-sm mb-6">Policy Manager — Admin sign in</div>
+    <div x-show="loginError" x-cloak class="mb-4 text-red-400 text-sm bg-red-950 border border-red-800 rounded px-3 py-2" x-text="loginError"></div>
     <div class="space-y-3">
       <div>
         <label class="text-xs text-gray-500 uppercase tracking-wider block mb-1">Username</label>
         <input type="text" x-model="loginUsername" @keydown.enter="login()"
-          class="w-full border rounded px-3 py-2 text-sm" placeholder="admin" autocomplete="username" />
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600" placeholder="admin" autocomplete="username" />
       </div>
       <div>
         <label class="text-xs text-gray-500 uppercase tracking-wider block mb-1">Password</label>
         <input type="password" x-model="loginPassword" @keydown.enter="login()"
-          class="w-full border rounded px-3 py-2 text-sm" autocomplete="current-password" />
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200" autocomplete="current-password" />
       </div>
       <button @click="login()" :disabled="loginBusy"
-        class="w-full bg-indigo-600 text-white py-2 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 mt-1"
+        class="w-full bg-blue-600 text-white py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50 mt-1"
         x-text="loginBusy ? 'Signing in…' : 'Sign In'"></button>
     </div>
   </div>
@@ -43,22 +44,22 @@ const html = `<!DOCTYPE html>
 <!-- ── App (hidden until logged in) ────────────────────────────────────────── -->
 <div x-show="loggedIn" x-cloak>
 
-<nav class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+<nav class="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
   <div class="flex items-center gap-3">
-    <span class="text-xl font-bold text-indigo-600">AI Firewall</span>
-    <span class="text-xs text-gray-400 font-mono">v2 · Policy Manager</span>
+    <span class="text-xl font-bold text-white">AI Firewall</span>
+    <span class="text-xs text-gray-500 font-mono">v2 · Policy Manager</span>
   </div>
   <div class="flex items-center gap-3">
-    <span class="text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 rounded px-2 py-0.5 font-semibold">ADMIN</span>
-    <span class="text-sm text-gray-700 font-medium" x-text="user && user.username"></span>
-    <button @click="logout()" class="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-3 py-1">Sign Out</button>
+    <span class="text-xs bg-blue-900 text-blue-300 border border-blue-700 rounded px-2 py-0.5 font-semibold">ADMIN</span>
+    <span class="text-sm text-white font-medium" x-text="user && user.username"></span>
+    <button @click="logout()" class="text-sm text-gray-400 hover:text-gray-200 border border-gray-700 rounded px-3 py-1">Sign Out</button>
   </div>
 </nav>
 
-<div class="bg-white border-b border-gray-200 px-6">
+<div class="bg-gray-900 border-b border-gray-800 px-6">
   <nav class="flex gap-6 text-sm font-medium">
     <template x-for="t in ['profiles','keys','signatures','audit']">
-      <button @click="tab=t" :class="tab===t ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
+      <button @click="tab=t" :class="tab===t ? 'tab-active' : 'text-gray-400 hover:text-gray-200'"
         class="py-3 border-b-2 border-transparent capitalize" x-text="t === 'keys' ? 'API Keys' : t === 'audit' ? 'Audit Log' : t"></button>
     </template>
   </nav>
@@ -66,114 +67,114 @@ const html = `<!DOCTYPE html>
 
 <main class="max-w-6xl mx-auto px-6 py-8">
 
-  <div x-show="message" x-cloak :class="msgErr ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'"
+  <div x-show="message" x-cloak :class="msgErr ? 'bg-red-950 border-red-800 text-red-400' : 'bg-green-950 border-green-800 text-green-400'"
     class="mb-4 border rounded px-4 py-3 text-sm flex justify-between">
     <span x-text="message"></span>
     <button @click="message=''" class="font-bold ml-4">×</button>
   </div>
 
   <!-- Raw key banner -->
-  <div x-show="newRawKey" x-cloak class="mb-4 bg-amber-50 border border-amber-300 rounded-lg p-4">
-    <p class="text-sm font-semibold text-amber-800 mb-1">Save this API key — it will not be shown again</p>
-    <code class="block text-sm font-mono break-all text-amber-900 mt-1 mb-2" x-text="newRawKey"></code>
-    <p class="text-xs text-amber-700 mb-2">Use this key as the <code class="bg-amber-100 px-1 rounded">X-API-Key</code> header when calling <code class="bg-amber-100 px-1 rounded">POST /v1/inspect</code> on the firewall-api.</p>
-    <button @click="newRawKey=''" class="text-xs text-amber-600 hover:underline">Dismiss</button>
+  <div x-show="newRawKey" x-cloak class="mb-4 bg-amber-950 border border-amber-700 rounded-lg p-4">
+    <p class="text-sm font-semibold text-amber-300 mb-1">Save this API key — it will not be shown again</p>
+    <code class="block text-sm font-mono break-all text-amber-200 mt-1 mb-2" x-text="newRawKey"></code>
+    <p class="text-xs text-amber-400 mb-2">Use this key as the <code class="bg-amber-900 px-1 rounded">X-API-Key</code> header when calling <code class="bg-amber-900 px-1 rounded">POST /v1/inspect</code> on the firewall-api.</p>
+    <button @click="newRawKey=''" class="text-xs text-amber-400 hover:underline">Dismiss</button>
   </div>
 
   <!-- ── Profiles ── -->
   <div x-show="tab==='profiles'">
     <div class="flex justify-between items-center mb-4">
-      <h2 class="text-lg font-semibold">Security Profiles</h2>
+      <h2 class="text-lg font-semibold text-white">Security Profiles</h2>
       <div class="flex gap-2">
-        <button @click="showAddFromTemplate=!showAddFromTemplate" class="text-sm border border-indigo-600 text-indigo-600 px-3 py-1 rounded hover:bg-indigo-50">+ From Template</button>
-        <button @click="openCreateProfile()" class="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">+ New Profile</button>
+        <button @click="showAddFromTemplate=!showAddFromTemplate" class="text-sm border border-blue-600 text-blue-400 px-3 py-1 rounded hover:bg-blue-950">+ From Template</button>
+        <button @click="openCreateProfile()" class="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">+ New Profile</button>
       </div>
     </div>
 
-    <div x-show="showAddFromTemplate" x-cloak class="mb-6 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-      <p class="text-sm font-medium text-indigo-800 mb-3">Create a profile with built-in template policies</p>
+    <div x-show="showAddFromTemplate" x-cloak class="mb-6 bg-blue-950 border border-blue-800 rounded-lg p-4">
+      <p class="text-sm font-medium text-blue-200 mb-3">Create a profile with built-in template policies</p>
       <div class="flex gap-3 flex-wrap">
         <template x-for="tpl in templates" :key="tpl">
           <button @click="createFromTemplate(tpl)"
-            class="text-sm bg-white border border-indigo-300 px-3 py-2 rounded hover:bg-indigo-100 capitalize"
+            class="text-sm bg-gray-800 border border-blue-700 text-white px-3 py-2 rounded hover:bg-blue-900 capitalize"
             x-text="tpl.replace(/-/g,' ')"></button>
         </template>
       </div>
     </div>
 
-    <div x-show="showProfileForm" x-cloak class="mb-6 bg-white border rounded-lg p-4">
-      <h3 class="font-semibold mb-3" x-text="editingProfile ? 'Edit Profile' : 'New Profile'"></h3>
+    <div x-show="showProfileForm" x-cloak class="mb-6 bg-gray-900 border border-gray-800 rounded-lg p-4">
+      <h3 class="font-semibold mb-3 text-white" x-text="editingProfile ? 'Edit Profile' : 'New Profile'"></h3>
       <div class="grid grid-cols-2 gap-3 mb-3">
         <div>
           <label class="block text-xs text-gray-500 mb-1">Name *</label>
-          <input x-model="profileForm.name" type="text" class="w-full border rounded px-3 py-1.5 text-sm" placeholder="e.g. Production Strict" />
+          <input x-model="profileForm.name" type="text" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600" placeholder="e.g. Production Strict" />
         </div>
         <div>
           <label class="block text-xs text-gray-500 mb-1">Rate Limit (req/min, blank = 60)</label>
-          <input x-model.number="profileForm.rateLimit" type="number" class="w-full border rounded px-3 py-1.5 text-sm" placeholder="60" />
+          <input x-model.number="profileForm.rateLimit" type="number" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600" placeholder="60" />
         </div>
       </div>
       <div class="mb-3">
         <label class="block text-xs text-gray-500 mb-1">Description</label>
-        <input x-model="profileForm.description" type="text" class="w-full border rounded px-3 py-1.5 text-sm" />
+        <input x-model="profileForm.description" type="text" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200" />
       </div>
-      <div class="flex items-center gap-4 mb-3 text-sm">
+      <div class="flex items-center gap-4 mb-3 text-sm text-gray-300">
         <label class="flex items-center gap-2">
           <input x-model="profileForm.failOpen" type="checkbox" class="rounded" />
           Fail-open on AI errors
         </label>
         <div class="flex items-center gap-2">
           <span class="text-gray-500">Cache TTL (s):</span>
-          <input x-model.number="profileForm.cacheTtlSeconds" type="number" class="border rounded px-2 py-1 text-sm w-24" />
+          <input x-model.number="profileForm.cacheTtlSeconds" type="number" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 w-24" />
         </div>
       </div>
       <div class="flex gap-2">
-        <button @click="saveProfile()" class="text-sm bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700">Save</button>
-        <button @click="showProfileForm=false;editingProfile=null" class="text-sm text-gray-500 px-4 py-1.5">Cancel</button>
+        <button @click="saveProfile()" class="text-sm bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700">Save</button>
+        <button @click="showProfileForm=false;editingProfile=null" class="text-sm text-gray-400 px-4 py-1.5">Cancel</button>
       </div>
     </div>
 
-    <div x-show="profiles.length === 0" x-cloak class="text-sm text-gray-400 py-8 text-center">
+    <div x-show="profiles.length === 0" x-cloak class="text-sm text-gray-500 py-8 text-center">
       No profiles yet. Create one above.
     </div>
 
     <div class="space-y-4">
       <template x-for="profile in profiles" :key="profile.id">
-        <div class="bg-white border rounded-lg overflow-hidden">
-          <div class="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
+        <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800 bg-gray-800">
             <div>
-              <span class="font-semibold" x-text="profile.name"></span>
-              <span class="ml-2 text-xs text-gray-400" x-text="profile.id"></span>
+              <span class="font-semibold text-white" x-text="profile.name"></span>
+              <span class="ml-2 text-xs text-gray-500" x-text="profile.id"></span>
             </div>
             <div class="flex items-center gap-2">
-              <span class="text-xs text-gray-500" x-text="(profile.policies?.length ?? 0) + ' policies'"></span>
-              <button @click="openEditProfile(profile)" class="text-xs text-indigo-600 hover:underline">Edit</button>
-              <button @click="confirmDeleteProfile(profile.id)" class="text-xs text-red-500 hover:underline">Delete</button>
+              <span class="text-xs text-gray-400" x-text="(profile.policies?.length ?? 0) + ' policies'"></span>
+              <button @click="openEditProfile(profile)" class="text-xs text-blue-400 hover:underline">Edit</button>
+              <button @click="confirmDeleteProfile(profile.id)" class="text-xs text-red-400 hover:underline">Delete</button>
             </div>
           </div>
           <div class="px-5 py-3">
             <template x-for="policy in (profile.policies ?? [])" :key="policy.id">
               <details class="mb-2">
-                <summary class="text-sm font-medium py-1 flex items-center">
+                <summary class="text-sm font-medium py-1 flex items-center text-gray-200">
                   <span x-text="policy.name"></span>
-                  <span class="text-xs text-gray-400 ml-2" x-text="'(' + (policy.categories?.length ?? 0) + ' categories)'"></span>
-                  <button @click.stop="removePolicyFromProfile(profile, policy.id)" class="ml-auto text-xs text-red-400 hover:text-red-600 font-normal">Remove</button>
+                  <span class="text-xs text-gray-500 ml-2" x-text="'(' + (policy.categories?.length ?? 0) + ' categories)'"></span>
+                  <button @click.stop="removePolicyFromProfile(profile, policy.id)" class="ml-auto text-xs text-red-400 hover:text-red-300 font-normal">Remove</button>
                 </summary>
                 <div class="ml-4 mt-1 space-y-1">
                   <template x-for="cat in (policy.categories ?? [])" :key="cat.id">
-                    <details class="bg-gray-50 rounded p-2">
-                      <summary class="text-xs font-medium text-gray-700">
+                    <details class="bg-gray-800 rounded p-2">
+                      <summary class="text-xs font-medium text-gray-300">
                         <span x-text="cat.name"></span>
-                        <span class="text-gray-400 ml-1" x-text="'(' + (cat.detections?.length ?? 0) + ')'"></span>
+                        <span class="text-gray-500 ml-1" x-text="'(' + (cat.detections?.length ?? 0) + ')'"></span>
                       </summary>
                       <div class="ml-3 mt-1 space-y-1">
                         <template x-for="det in (cat.detections ?? [])" :key="det.id">
                           <div class="flex items-start gap-2 text-xs py-1">
-                            <span :class="det.mode==='block' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'"
+                            <span :class="det.mode==='block' ? 'bg-red-950 text-red-400' : 'bg-yellow-950 text-yellow-400'"
                               class="px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0" x-text="det.mode"></span>
                             <div>
-                              <span class="font-medium" x-text="det.name"></span>
-                              <div class="text-gray-400 mt-0.5" x-text="(det.settings ?? []).filter(s=>s.enabled).map(s=>s.name).join(', ')"></div>
+                              <span class="font-medium text-gray-200" x-text="det.name"></span>
+                              <div class="text-gray-500 mt-0.5" x-text="(det.settings ?? []).filter(s=>s.enabled).map(s=>s.name).join(', ')"></div>
                             </div>
                           </div>
                         </template>
@@ -183,51 +184,51 @@ const html = `<!DOCTYPE html>
                 </div>
               </details>
             </template>
-            <div x-show="(profile.policies ?? []).length === 0" class="text-xs text-gray-400 py-2">No policies embedded yet.</div>
-            <div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 flex-wrap">
-              <span class="text-xs text-gray-400">Add policy:</span>
+            <div x-show="(profile.policies ?? []).length === 0" class="text-xs text-gray-500 py-2">No policies embedded yet.</div>
+            <div class="mt-3 pt-3 border-t border-gray-800 flex items-center gap-2 flex-wrap">
+              <span class="text-xs text-gray-500">Add policy:</span>
               <template x-for="tpl in templates" :key="tpl">
                 <button @click="addPolicyToProfile(profile, tpl)"
-                  class="text-xs border border-indigo-300 text-indigo-600 px-2 py-0.5 rounded hover:bg-indigo-50"
+                  class="text-xs border border-blue-700 text-blue-400 px-2 py-0.5 rounded hover:bg-blue-950"
                   x-text="tpl.replace(/-/g,' ')"></button>
               </template>
             </div>
 
             <!-- ── Custom Rules ─────────────────────────────────────────── -->
-            <div class="mt-3 pt-3 border-t border-gray-100">
+            <div class="mt-3 pt-3 border-t border-gray-800">
               <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Custom Rules</span>
-                <button @click="openAddCustomRule(profile)" class="text-xs text-indigo-600 hover:underline">+ Add Rule</button>
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Custom Rules</span>
+                <button @click="openAddCustomRule(profile)" class="text-xs text-blue-400 hover:underline">+ Add Rule</button>
               </div>
               <template x-for="det in getCustomDets(profile)" :key="det.id">
                 <div class="flex items-start gap-2 py-1 text-xs">
-                  <span :class="det.mode==='block' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'"
+                  <span :class="det.mode==='block' ? 'bg-red-950 text-red-400' : 'bg-yellow-950 text-yellow-400'"
                     class="px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0" x-text="det.mode"></span>
                   <div class="flex-1 min-w-0">
-                    <span class="font-medium" x-text="det.name"></span>
-                    <span class="text-gray-400 ml-1" x-text="'(' + (det.customPatterns||[]).length + ' patterns)'"></span>
-                    <div class="text-gray-400 mt-0.5 flex flex-wrap gap-1">
+                    <span class="font-medium text-gray-200" x-text="det.name"></span>
+                    <span class="text-gray-500 ml-1" x-text="'(' + (det.customPatterns||[]).length + ' patterns)'"></span>
+                    <div class="text-gray-500 mt-0.5 flex flex-wrap gap-1">
                       <template x-for="(p, i) in (det.customPatterns||[]).slice(0,4)" :key="i">
-                        <span class="inline-block bg-gray-100 rounded px-1 font-mono truncate max-w-[120px]"
+                        <span class="inline-block bg-gray-700 text-gray-300 rounded px-1 font-mono truncate max-w-[120px]"
                           x-text="p.isRegex ? '/' + p.value + '/i' : p.value"></span>
                       </template>
-                      <span x-show="(det.customPatterns||[]).length > 4" class="text-gray-300"
+                      <span x-show="(det.customPatterns||[]).length > 4" class="text-gray-600"
                         x-text="'+' + (det.customPatterns.length - 4) + ' more'"></span>
                     </div>
                   </div>
-                  <button @click="removeCustomDet(profile, det.id)" class="text-red-400 hover:text-red-600 shrink-0 text-sm leading-none">×</button>
+                  <button @click="removeCustomDet(profile, det.id)" class="text-red-400 hover:text-red-300 shrink-0 text-sm leading-none">×</button>
                 </div>
               </template>
               <div x-show="getCustomDets(profile).length === 0 && showCustomDetForm !== profile.id"
-                class="text-xs text-gray-400 py-1">No custom rules yet.</div>
+                class="text-xs text-gray-500 py-1">No custom rules yet.</div>
 
               <!-- Add form -->
               <div x-show="showCustomDetForm === profile.id" x-cloak
-                class="mt-2 bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
+                class="mt-2 bg-gray-800 border border-gray-700 rounded p-3 space-y-2">
                 <div class="flex gap-2">
                   <input x-model="customDetForm.name" type="text" placeholder="Rule name *"
-                    class="flex-1 border rounded px-2 py-1 text-xs" />
-                  <select x-model="customDetForm.mode" class="border rounded px-2 py-1 text-xs">
+                    class="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500" />
+                  <select x-model="customDetForm.mode" class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200">
                     <option value="block">Block</option>
                     <option value="monitor">Monitor</option>
                   </select>
@@ -235,50 +236,50 @@ const html = `<!DOCTYPE html>
                 <div class="space-y-1">
                   <template x-for="(p, i) in customDetForm.patterns" :key="i">
                     <div class="flex items-center gap-1 text-xs">
-                      <span class="bg-white border rounded px-2 py-0.5 font-mono flex-1 truncate"
+                      <span class="bg-gray-700 border border-gray-600 rounded px-2 py-0.5 font-mono flex-1 truncate text-gray-300"
                         x-text="p.isRegex ? '/' + p.value + '/i' : p.value"></span>
-                      <button @click="removePatternFromDet(i)" class="text-red-400 hover:text-red-600 shrink-0">×</button>
+                      <button @click="removePatternFromDet(i)" class="text-red-400 hover:text-red-300 shrink-0">×</button>
                     </div>
                   </template>
                 </div>
                 <div class="flex gap-1 items-center">
                   <input x-model="customPatternInput" @keydown.enter="addPatternToDet()" type="text"
-                    placeholder="Word, phrase or regex…" class="flex-1 border rounded px-2 py-1 text-xs" />
-                  <label class="flex items-center gap-1 text-xs shrink-0 cursor-pointer">
+                    placeholder="Word, phrase or regex…" class="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500" />
+                  <label class="flex items-center gap-1 text-xs shrink-0 cursor-pointer text-gray-400">
                     <input type="checkbox" x-model="customPatternIsRegex" class="rounded" />
                     Regex
                   </label>
                   <button @click="addPatternToDet()"
-                    class="text-xs bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 shrink-0">+</button>
+                    class="text-xs bg-gray-600 hover:bg-gray-500 text-gray-200 rounded px-2 py-1 shrink-0">+</button>
                 </div>
                 <div class="flex gap-2">
                   <button @click="saveCustomDetection(profile)"
-                    class="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">Save Rule</button>
-                  <button @click="showCustomDetForm=''" class="text-xs text-gray-500 px-3 py-1">Cancel</button>
+                    class="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Save Rule</button>
+                  <button @click="showCustomDetForm=''" class="text-xs text-gray-400 px-3 py-1">Cancel</button>
                 </div>
               </div>
             </div>
           </div>
-          <div class="px-5 py-3 border-t border-gray-100 bg-gray-50">
+          <div class="px-5 py-3 border-t border-gray-800 bg-gray-800">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">API Keys</span>
-              <button @click="quickCreateKey(profile)" class="text-xs text-indigo-600 hover:underline">+ New Key</button>
+              <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">API Keys</span>
+              <button @click="quickCreateKey(profile)" class="text-xs text-blue-400 hover:underline">+ New Key</button>
             </div>
             <template x-for="key in apiKeys.filter(k => k.profileId === profile.id)" :key="key.id">
-              <div class="flex items-center gap-3 py-1.5 border-b border-gray-100 last:border-0 text-sm">
-                <span class="font-medium text-gray-800" x-text="key.name"></span>
-                <span :class="key.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+              <div class="flex items-center gap-3 py-1.5 border-b border-gray-700 last:border-0 text-sm">
+                <span class="font-medium text-white" x-text="key.name"></span>
+                <span :class="key.active ? 'bg-green-950 text-green-400' : 'bg-gray-700 text-gray-400'"
                   class="px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" x-text="key.active ? 'active' : 'revoked'"></span>
-                <span class="text-xs text-gray-400 shrink-0" x-text="key.createdAt?.slice(0,10)"></span>
+                <span class="text-xs text-gray-500 shrink-0" x-text="key.createdAt?.slice(0,10)"></span>
                 <div class="ml-auto flex gap-3 shrink-0">
-                  <button x-show="key.active" @click="rotateKey(key.id)" class="text-xs text-blue-600 hover:underline">Rotate</button>
-                  <button x-show="key.active" @click="revokeKey(key.id)" class="text-xs text-red-500 hover:underline">Revoke</button>
-                  <button @click="deleteKey(key.id)" class="text-xs text-gray-400 hover:underline">Delete</button>
+                  <button x-show="key.active" @click="rotateKey(key.id)" class="text-xs text-blue-400 hover:underline">Rotate</button>
+                  <button x-show="key.active" @click="revokeKey(key.id)" class="text-xs text-red-400 hover:underline">Revoke</button>
+                  <button @click="deleteKey(key.id)" class="text-xs text-gray-500 hover:underline">Delete</button>
                 </div>
               </div>
             </template>
             <div x-show="!apiKeys.filter(k => k.profileId === profile.id).length"
-              class="text-xs text-gray-400 py-1">No API keys yet.</div>
+              class="text-xs text-gray-500 py-1">No API keys yet.</div>
           </div>
         </div>
       </template>
@@ -288,20 +289,20 @@ const html = `<!DOCTYPE html>
   <!-- ── API Keys ── -->
   <div x-show="tab==='keys'" x-cloak>
     <div class="flex justify-between items-center mb-4">
-      <h2 class="text-lg font-semibold">API Keys</h2>
-      <button @click="showKeyForm=!showKeyForm" class="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">+ New Key</button>
+      <h2 class="text-lg font-semibold text-white">API Keys</h2>
+      <button @click="showKeyForm=!showKeyForm" class="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">+ New Key</button>
     </div>
 
-    <div x-show="showKeyForm" x-cloak class="mb-6 bg-white border rounded-lg p-4">
-      <h3 class="font-semibold mb-3">Create API Key</h3>
+    <div x-show="showKeyForm" x-cloak class="mb-6 bg-gray-900 border border-gray-800 rounded-lg p-4">
+      <h3 class="font-semibold mb-3 text-white">Create API Key</h3>
       <div class="grid grid-cols-2 gap-3 mb-3">
         <div>
           <label class="block text-xs text-gray-500 mb-1">Name *</label>
-          <input x-model="keyForm.name" type="text" class="w-full border rounded px-3 py-1.5 text-sm" placeholder="e.g. prod-backend" />
+          <input x-model="keyForm.name" type="text" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600" placeholder="e.g. prod-backend" />
         </div>
         <div>
           <label class="block text-xs text-gray-500 mb-1">Bind to Profile *</label>
-          <select x-model="keyForm.profileId" class="w-full border rounded px-3 py-1.5 text-sm">
+          <select x-model="keyForm.profileId" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200">
             <option value="">Select profile…</option>
             <template x-for="p in profiles" :key="p.id">
               <option :value="p.id" x-text="p.name"></option>
@@ -310,14 +311,14 @@ const html = `<!DOCTYPE html>
         </div>
       </div>
       <div class="flex gap-2">
-        <button @click="createKey()" class="text-sm bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700">Generate</button>
-        <button @click="showKeyForm=false" class="text-sm text-gray-500 px-4 py-1.5">Cancel</button>
+        <button @click="createKey()" class="text-sm bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700">Generate</button>
+        <button @click="showKeyForm=false" class="text-sm text-gray-400 px-4 py-1.5">Cancel</button>
       </div>
     </div>
 
-    <div class="bg-white border rounded-lg overflow-hidden">
+    <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
       <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+        <thead class="bg-gray-800 text-xs text-gray-400 uppercase">
           <tr>
             <th class="px-4 py-2 text-left">Name</th>
             <th class="px-4 py-2 text-left">Profile</th>
@@ -328,23 +329,23 @@ const html = `<!DOCTYPE html>
         </thead>
         <tbody>
           <template x-for="key in apiKeys" :key="key.id">
-            <tr class="border-t hover:bg-gray-50">
-              <td class="px-4 py-2 font-medium" x-text="key.name"></td>
-              <td class="px-4 py-2 text-gray-500 text-xs font-mono" x-text="key.profileId?.slice(0,8)+'…'"></td>
+            <tr class="border-t border-gray-800 hover:bg-gray-800">
+              <td class="px-4 py-2 font-medium text-white" x-text="key.name"></td>
+              <td class="px-4 py-2 text-gray-400 text-xs font-mono" x-text="key.profileId?.slice(0,8)+'…'"></td>
               <td class="px-4 py-2">
-                <span :class="key.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                <span :class="key.active ? 'bg-green-950 text-green-400' : 'bg-gray-700 text-gray-400'"
                   class="px-2 py-0.5 rounded text-xs" x-text="key.active ? 'active' : 'revoked'"></span>
               </td>
               <td class="px-4 py-2 text-gray-500 text-xs" x-text="key.createdAt?.slice(0,10)"></td>
               <td class="px-4 py-2 flex gap-2">
-                <button x-show="key.active" @click="rotateKey(key.id)" class="text-xs text-blue-600 hover:underline">Rotate</button>
-                <button x-show="key.active" @click="revokeKey(key.id)" class="text-xs text-red-500 hover:underline">Revoke</button>
-                <button @click="deleteKey(key.id)" class="text-xs text-gray-400 hover:underline">Delete</button>
+                <button x-show="key.active" @click="rotateKey(key.id)" class="text-xs text-blue-400 hover:underline">Rotate</button>
+                <button x-show="key.active" @click="revokeKey(key.id)" class="text-xs text-red-400 hover:underline">Revoke</button>
+                <button @click="deleteKey(key.id)" class="text-xs text-gray-500 hover:underline">Delete</button>
               </td>
             </tr>
           </template>
-          <tr x-show="apiKeys.length===0" class="border-t">
-            <td colspan="5" class="px-4 py-6 text-center text-gray-400 text-sm">No keys yet.</td>
+          <tr x-show="apiKeys.length===0" class="border-t border-gray-800">
+            <td colspan="5" class="px-4 py-6 text-center text-gray-500 text-sm">No keys yet.</td>
           </tr>
         </tbody>
       </table>
@@ -354,23 +355,23 @@ const html = `<!DOCTYPE html>
   <!-- ── Signatures ── -->
   <div x-show="tab==='signatures'" x-cloak>
     <div class="flex justify-between items-center mb-4">
-      <h2 class="text-lg font-semibold">Attack Signatures <span class="text-xs text-gray-400">(Vectorize)</span></h2>
-      <button @click="showSigForm=!showSigForm" class="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">+ Add Signature</button>
+      <h2 class="text-lg font-semibold text-white">Attack Signatures <span class="text-xs text-gray-500">(Vectorize)</span></h2>
+      <button @click="showSigForm=!showSigForm" class="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">+ Add Signature</button>
     </div>
-    <div x-show="showSigForm" x-cloak class="mb-4 bg-white border rounded-lg p-4">
+    <div x-show="showSigForm" x-cloak class="mb-4 bg-gray-900 border border-gray-800 rounded-lg p-4">
       <div class="space-y-2 mb-3">
-        <input x-model="sigForm.text" type="text" placeholder="Attack text *" class="w-full border rounded px-3 py-1.5 text-sm" />
-        <input x-model="sigForm.category" type="text" placeholder="Category (e.g. injection)" class="w-full border rounded px-3 py-1.5 text-sm" />
-        <input x-model="sigForm.description" type="text" placeholder="Description" class="w-full border rounded px-3 py-1.5 text-sm" />
+        <input x-model="sigForm.text" type="text" placeholder="Attack text *" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500" />
+        <input x-model="sigForm.category" type="text" placeholder="Category (e.g. injection)" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500" />
+        <input x-model="sigForm.description" type="text" placeholder="Description" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500" />
       </div>
       <div class="flex gap-2">
-        <button @click="addSignature()" class="text-sm bg-indigo-600 text-white px-4 py-1.5 rounded">Add</button>
-        <button @click="showSigForm=false" class="text-sm text-gray-500 px-4 py-1.5">Cancel</button>
+        <button @click="addSignature()" class="text-sm bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700">Add</button>
+        <button @click="showSigForm=false" class="text-sm text-gray-400 px-4 py-1.5">Cancel</button>
       </div>
     </div>
-    <div class="bg-white border rounded-lg overflow-hidden">
+    <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
       <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+        <thead class="bg-gray-800 text-xs text-gray-400 uppercase">
           <tr>
             <th class="px-4 py-2 text-left">Text</th>
             <th class="px-4 py-2 text-left">Category</th>
@@ -380,15 +381,15 @@ const html = `<!DOCTYPE html>
         </thead>
         <tbody>
           <template x-for="sig in signatures" :key="sig.id">
-            <tr class="border-t hover:bg-gray-50">
-              <td class="px-4 py-2 text-gray-700 max-w-xs truncate" x-text="sig.text"></td>
+            <tr class="border-t border-gray-800 hover:bg-gray-800">
+              <td class="px-4 py-2 text-gray-300 max-w-xs truncate" x-text="sig.text"></td>
               <td class="px-4 py-2 text-gray-500 text-xs" x-text="sig.category"></td>
-              <td class="px-4 py-2 text-gray-400 text-xs" x-text="sig.createdAt?.slice(0,10)"></td>
-              <td class="px-4 py-2"><button @click="deleteSig(sig.id)" class="text-xs text-red-500 hover:underline">Delete</button></td>
+              <td class="px-4 py-2 text-gray-500 text-xs" x-text="sig.createdAt?.slice(0,10)"></td>
+              <td class="px-4 py-2"><button @click="deleteSig(sig.id)" class="text-xs text-red-400 hover:underline">Delete</button></td>
             </tr>
           </template>
-          <tr x-show="signatures.length===0" class="border-t">
-            <td colspan="4" class="px-4 py-6 text-center text-gray-400 text-sm">No signatures yet.</td>
+          <tr x-show="signatures.length===0" class="border-t border-gray-800">
+            <td colspan="4" class="px-4 py-6 text-center text-gray-500 text-sm">No signatures yet.</td>
           </tr>
         </tbody>
       </table>
@@ -398,12 +399,12 @@ const html = `<!DOCTYPE html>
   <!-- ── Audit ── -->
   <div x-show="tab==='audit'" x-cloak>
     <div class="flex justify-between items-center mb-4">
-      <h2 class="text-lg font-semibold">Audit Log</h2>
-      <button @click="loadAudit()" class="text-sm text-indigo-600 hover:underline">Refresh</button>
+      <h2 class="text-lg font-semibold text-white">Audit Log</h2>
+      <button @click="loadAudit()" class="text-sm text-blue-400 hover:underline">Refresh</button>
     </div>
-    <div class="bg-white border rounded-lg overflow-hidden">
+    <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
       <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+        <thead class="bg-gray-800 text-xs text-gray-400 uppercase">
           <tr>
             <th class="px-4 py-2 text-left">Time</th>
             <th class="px-4 py-2 text-left">Action</th>
@@ -413,15 +414,15 @@ const html = `<!DOCTYPE html>
         </thead>
         <tbody>
           <template x-for="(evt, i) in auditEvents" :key="i">
-            <tr class="border-t hover:bg-gray-50">
-              <td class="px-4 py-2 text-gray-400 text-xs" x-text="evt.timestamp?.slice(0,19)?.replace('T',' ')"></td>
-              <td class="px-4 py-2 font-medium" x-text="evt.action"></td>
-              <td class="px-4 py-2 text-gray-500" x-text="evt.resourceType"></td>
+            <tr class="border-t border-gray-800 hover:bg-gray-800">
+              <td class="px-4 py-2 text-gray-500 text-xs" x-text="evt.timestamp?.slice(0,19)?.replace('T',' ')"></td>
+              <td class="px-4 py-2 font-medium text-gray-200" x-text="evt.action"></td>
+              <td class="px-4 py-2 text-gray-400" x-text="evt.resourceType"></td>
               <td class="px-4 py-2 font-mono text-xs text-gray-500" x-text="evt.resourceId"></td>
             </tr>
           </template>
-          <tr x-show="auditEvents.length===0" class="border-t">
-            <td colspan="4" class="px-4 py-6 text-center text-gray-400 text-sm">No events yet.</td>
+          <tr x-show="auditEvents.length===0" class="border-t border-gray-800">
+            <td colspan="4" class="px-4 py-6 text-center text-gray-500 text-sm">No events yet.</td>
           </tr>
         </tbody>
       </table>
