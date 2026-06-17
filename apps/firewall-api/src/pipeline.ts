@@ -69,18 +69,22 @@ export async function runPipeline(
   const prompt = req.messages[req.messages.length - 1].content;
 
   const activeDetections = getActiveDetections(profile);
-  if (activeDetections.length === 0) {
-    return buildResponse(requestId, 'pass', profile, [], perLayer, startTime, false);
-  }
 
   // ── Layer 0: synchronous heuristics (0ms I/O) ─────────────────────────────
+  // Run BEFORE the empty-profile short-circuit: global hard checks (CBRN,
+  // indirect injection) must fire regardless of what a profile has configured.
   const l0t = Date.now();
   const l0Violations = runLayer0(prompt, activeDetections);
   perLayer['layer0'] = Date.now() - l0t;
 
-  // Immediate block on confident heuristic (no need to call AI)
   if (l0Violations.some(v => v.mode === 'block')) {
     return buildResponse(requestId, 'block', profile, l0Violations, perLayer, startTime, false);
+  }
+
+  // If the profile has no active detections, global checks have already run —
+  // nothing further to do.
+  if (activeDetections.length === 0) {
+    return buildResponse(requestId, 'pass', profile, [], perLayer, startTime, false);
   }
 
   // ── Layer 1 (cache) + Layer 2 (vector): parallel I/O ─────────────────────
