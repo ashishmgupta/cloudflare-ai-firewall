@@ -170,26 +170,24 @@ app.delete('/api/users/:id', requireAdmin, async c => {
   return c.json({ ok: true });
 });
 
-// ── Ad-hoc inspect (auth required — uses admin token + profile ID, no key lookup) ──
+// ── Ad-hoc inspect (auth required — uses per-profile API key from inspect_keys) ──
 app.post('/api/adhoc', async c => {
   const { prompt, profileId } = await c.req.json<{ prompt: string; profileId: string }>();
   if (!prompt || !profileId) return c.json({ error: 'prompt and profileId are required' }, 400);
 
+  const inspectKey = await getInspectKey(c.env.DB, profileId);
+  if (!inspectKey) return c.json({ error: 'No API key registered for this profile. Ask an admin to add one in the Users tab.', code: 'PROFILE_NOT_FOUND' }, 404);
+
   const requestBody = JSON.stringify({ messages: [{ role: 'user', content: prompt }] });
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Admin-Token': '[redacted]',
-    'X-Profile-Id': profileId,
+    'X-API-Key': '[redacted]',
   };
   const t0 = Date.now();
 
   const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/inspect', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Admin-Token': c.env.ADMIN_TOKEN,
-      'X-Profile-Id': profileId,
-    },
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': inspectKey.api_key },
     body: requestBody,
   });
 
@@ -232,7 +230,7 @@ app.post('/api/adhoc', async c => {
     wallMs,
     error: parsed.error as string | undefined,
     code: parsed.code as string | undefined,
-    profileName: (parsed.profile as { name?: string } | undefined)?.name ?? profileId,
+    profileName: inspectKey.profile_name,
   });
 });
 
@@ -265,11 +263,10 @@ app.get('/api/l3-prompt', async c => {
 
 // ── Inspect profile details — proxies to firewall-api /v1/profile-info ────────
 app.get('/api/inspect-profiles/:profileId/details', async c => {
+  const inspectKey = await getInspectKey(c.env.DB, c.req.param('profileId'));
+  if (!inspectKey) return c.json({ error: 'Profile not found' }, 404);
   const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/profile-info', {
-    headers: {
-      'X-Admin-Token': c.env.ADMIN_TOKEN,
-      'X-Profile-Id': c.req.param('profileId'),
-    },
+    headers: { 'X-API-Key': inspectKey.api_key },
   });
   const data = await res.json();
   return c.json(data, res.status as 200);
