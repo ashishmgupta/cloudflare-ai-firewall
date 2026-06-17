@@ -234,15 +234,10 @@ app.post('/api/adhoc', async c => {
   });
 });
 
-// ── Inspect profiles — all profiles from policy manager (no manual registration needed) ──
-app.get('/api/inspect-profiles', async c => {
-  const res = await fetch(`${c.env.POLICY_MANAGER_URL}/api/profiles`, {
-    headers: { Authorization: `Bearer ${c.env.ADMIN_TOKEN}` },
-  });
-  if (!res.ok) return c.json([], 200);
-  const profiles = await res.json() as { id: string; name: string }[];
-  return c.json(profiles.map(p => ({ profile_id: p.id, profile_name: p.name })));
-});
+// ── Inspect profiles — only profiles with a registered API key ─────────────────
+app.get('/api/inspect-profiles', async c =>
+  c.json(await listInspectKeys(c.env.DB)),
+);
 
 // ── Cache purge — admin only, proxies DELETE /v1/cache to firewall-api ────────
 app.delete('/api/cache', requireAdmin, async c => {
