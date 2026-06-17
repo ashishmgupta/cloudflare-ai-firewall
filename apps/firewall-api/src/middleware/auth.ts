@@ -26,9 +26,28 @@ async function loadProfile(profileId: string, env: Env): Promise<SecurityProfile
 }
 
 export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) {
+  // Alt auth: X-Admin-Token + X-Profile-Id (used by firewall-tester to inspect any profile)
+  const adminToken = c.req.header('X-Admin-Token');
+  const profileId  = c.req.header('X-Profile-Id');
+  if (adminToken || profileId) {
+    if (!adminToken || !profileId) {
+      return c.json({ error: 'X-Admin-Token and X-Profile-Id must both be present', code: 'INVALID_API_KEY' }, 401);
+    }
+    if (adminToken !== c.env.ADMIN_TOKEN) {
+      return c.json({ error: 'Invalid admin token', code: 'INVALID_API_KEY' }, 401);
+    }
+    const profile = await loadProfile(profileId, c.env);
+    if (!profile) {
+      return c.json({ error: 'Profile not found', code: 'PROFILE_NOT_FOUND' }, 404);
+    }
+    c.set('profile' as never, profile);
+    return next();
+  }
+
+  // Standard auth: X-API-Key → hash → profileId → profile
   const rawKey = c.req.header('X-API-Key');
   if (!rawKey) {
-    return c.json({ error: 'Missing X-API-Key header', code: 'INVALID_API_KEY' }, 401);
+    return c.json({ error: 'Missing X-API-Key or X-Admin-Token + X-Profile-Id', code: 'INVALID_API_KEY' }, 401);
   }
 
   const keyHash = await sha256Hex(rawKey);
@@ -39,10 +58,10 @@ export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) 
     return c.json({ error: 'Invalid API key', code: 'INVALID_API_KEY' }, 401);
   }
 
-  const { profileId } = JSON.parse(pointerRaw) as { profileId: string };
+  const { profileId: resolvedProfileId } = JSON.parse(pointerRaw) as { profileId: string };
 
   // Read 2: profileId → full document (in-memory cached)
-  const profile = await loadProfile(profileId, c.env);
+  const profile = await loadProfile(resolvedProfileId, c.env);
   if (!profile) {
     return c.json({ error: 'Profile not found', code: 'PROFILE_NOT_FOUND' }, 500);
   }

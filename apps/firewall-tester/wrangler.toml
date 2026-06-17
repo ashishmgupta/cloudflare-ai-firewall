@@ -19,6 +19,7 @@ service = "firewall-api"
 
 [vars]
 ENVIRONMENT = "production"
+POLICY_MANAGER_URL = "https://aifirewallmanager.ashishlabs.com"
 
 [observability]
 enabled = true

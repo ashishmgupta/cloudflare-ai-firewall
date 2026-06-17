@@ -17,6 +17,7 @@ interface Env {
   ADMIN_TOKEN: string;
   FIREWALL_API: Fetcher;
   FIREWALL_API_KEY: string;
+  POLICY_MANAGER_URL: string;
 }
 
 interface UserCtx {
@@ -169,24 +170,26 @@ app.delete('/api/users/:id', requireAdmin, async c => {
   return c.json({ ok: true });
 });
 
-// ── Ad-hoc inspect (auth required — uses server-side key lookup) ───────────────
+// ── Ad-hoc inspect (auth required — uses admin token + profile ID, no key lookup) ──
 app.post('/api/adhoc', async c => {
   const { prompt, profileId } = await c.req.json<{ prompt: string; profileId: string }>();
   if (!prompt || !profileId) return c.json({ error: 'prompt and profileId are required' }, 400);
 
-  const inspectKey = await getInspectKey(c.env.DB, profileId);
-  if (!inspectKey) return c.json({ error: 'Profile not configured for inspection', code: 'PROFILE_NOT_FOUND' }, 404);
-
   const requestBody = JSON.stringify({ messages: [{ role: 'user', content: prompt }] });
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-API-Key': '[redacted]',
+    'X-Admin-Token': '[redacted]',
+    'X-Profile-Id': profileId,
   };
   const t0 = Date.now();
 
   const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/inspect', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-Key': inspectKey.api_key },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Token': c.env.ADMIN_TOKEN,
+      'X-Profile-Id': profileId,
+    },
     body: requestBody,
   });
 
@@ -229,14 +232,19 @@ app.post('/api/adhoc', async c => {
     wallMs,
     error: parsed.error as string | undefined,
     code: parsed.code as string | undefined,
-    profileName: inspectKey.profile_name,
+    profileName: (parsed.profile as { name?: string } | undefined)?.name ?? profileId,
   });
 });
 
-// ── Inspect profiles — available to all authenticated users ────────────────────
-app.get('/api/inspect-profiles', async c =>
-  c.json(await listInspectKeys(c.env.DB)),
-);
+// ── Inspect profiles — all profiles from policy manager (no manual registration needed) ──
+app.get('/api/inspect-profiles', async c => {
+  const res = await fetch(`${c.env.POLICY_MANAGER_URL}/api/profiles`, {
+    headers: { Authorization: `Bearer ${c.env.ADMIN_TOKEN}` },
+  });
+  if (!res.ok) return c.json([], 200);
+  const profiles = await res.json() as { id: string; name: string }[];
+  return c.json(profiles.map(p => ({ profile_id: p.id, profile_name: p.name })));
+});
 
 // ── Cache purge — admin only, proxies DELETE /v1/cache to firewall-api ────────
 app.delete('/api/cache', requireAdmin, async c => {
@@ -257,10 +265,11 @@ app.get('/api/l3-prompt', async c => {
 
 // ── Inspect profile details — proxies to firewall-api /v1/profile-info ────────
 app.get('/api/inspect-profiles/:profileId/details', async c => {
-  const inspectKey = await getInspectKey(c.env.DB, c.req.param('profileId'));
-  if (!inspectKey) return c.json({ error: 'Profile not found' }, 404);
   const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/profile-info', {
-    headers: { 'X-API-Key': inspectKey.api_key },
+    headers: {
+      'X-Admin-Token': c.env.ADMIN_TOKEN,
+      'X-Profile-Id': c.req.param('profileId'),
+    },
   });
   const data = await res.json();
   return c.json(data, res.status as 200);
