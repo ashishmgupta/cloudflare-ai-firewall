@@ -206,6 +206,66 @@ function checkIndirectInjection(prompt: string): string | null {
   return m ? m[0].slice(0, 100) : null;
 }
 
+// ─── Global jailbreak / instruction-override checks ───────────────────────────
+// These patterns signal an AI is being told to abandon its values or a new
+// malicious identity is being injected. All run globally — profile config cannot
+// accidentally opt out of these checks.
+
+// 1. Direct instruction dismissal — "Ignore all previous instructions", etc.
+const GLOBAL_INSTR_OVERRIDE =
+  /\b(?:ignore|disregard|discard|forget|dismiss|drop)\s+(?:(?:all|any|the|your|these|prior|previous|further|above|every)\s+)*(?:previous\s+)?(?:instructions?|rules?|guidelines?|constraints?|restrictions?|programming|directives?|training)\b/i;
+
+// 2. Identity removal + replacement — "You are no longer X. You are Y"
+//    Requires both removal AND new identity assignment within 150 chars.
+const GLOBAL_IDENTITY_REMOVAL =
+  /\byou\s+are\s+no\s+longer\b(?:[\s\S]{0,150}?)\byou\s+(?:are\s+(?:now\s+)?|must\s+(?:act\s+as\s+|be\s+)|will\s+(?:act\s+as\s+|be\s+))/is;
+
+// 3. Explicit no-constraint model characterization — "a model with no safety constraints"
+const GLOBAL_NO_CONSTRAINTS =
+  /\b(?:model|ai|assistant|system|agent|bot)\s+with(?:\s+absolutely)?\s+no\s+(?:regulatory|ethical|safety|content|moral|operational|legal)\s+(?:constraints?|restrictions?|guidelines?|rules?|filters?|limits?)\b/i;
+
+// 4. Delimiter injection — "---END OF SYSTEM GUIDELINES---", "=== END PROMPT ==="
+const GLOBAL_DELIMITER_INJECT =
+  /(?:[-=*#~]{3,})\s*(?:end\s+of\s+(?:system|guidelines?|instructions?|prompt|context|rules?)|system\s+(?:prompt\s+)?ends?|prompt\s+ends?)\s*(?:[-=*#~]{0,})/i;
+
+// 5. Unrestricted / developer / jailbreak mode activation
+const GLOBAL_UNRESTRICTED_MODE =
+  /\b(?:now\s+)?(?:enter(?:ing)?|operat(?:ing|e)\s+in|activat(?:ed|ing)?|switch(?:ed|ing)?\s+to|running\s+in)\s+(?:unrestricted|unfiltered|uncensored|jailbreak|god|developer|admin|superuser|debug|bypass)\s+mode\b/i;
+
+// 6. Fake system authority injection — "SYSTEM ALERT: Maintenance mode activated"
+const GLOBAL_FAKE_SYS_AUTHORITY =
+  /\b(?:system\s+alert|admin\s+override|maintenance\s+mode\s+activated|emergency\s+protocol\s+activated|debug\s+mode\s+(?:enabled|activated)|system\s+update\s+in\s+progress)\s*[:.]/i;
+
+const JAILBREAK_MITRE = {
+  techniqueId: 'AML.T0054',
+  techniqueName: 'LLM Jailbreak',
+  tactic: 'ml-attack-staging',
+} as const;
+
+const INJECTION_MITRE = {
+  techniqueId: 'AML.T0051',
+  techniqueName: 'LLM Prompt Injection',
+  tactic: 'ml-attack-staging',
+} as const;
+
+type GlobalCheckResult = { evidence: string; mitre: typeof JAILBREAK_MITRE | typeof INJECTION_MITRE; setting: string } | null;
+
+function checkGlobalJailbreak(prompt: string): GlobalCheckResult {
+  const checks: Array<[RegExp, string, typeof JAILBREAK_MITRE | typeof INJECTION_MITRE]> = [
+    [GLOBAL_INSTR_OVERRIDE,       'Instruction Override',       INJECTION_MITRE],
+    [GLOBAL_IDENTITY_REMOVAL,     'Identity Override',          JAILBREAK_MITRE],
+    [GLOBAL_NO_CONSTRAINTS,       'No-Constraint Model Claim',  JAILBREAK_MITRE],
+    [GLOBAL_DELIMITER_INJECT,     'Delimiter Injection',        INJECTION_MITRE],
+    [GLOBAL_UNRESTRICTED_MODE,    'Unrestricted Mode Claim',    JAILBREAK_MITRE],
+    [GLOBAL_FAKE_SYS_AUTHORITY,   'Fake System Authority',      INJECTION_MITRE],
+  ];
+  for (const [re, setting, mitre] of checks) {
+    const m = re.exec(prompt);
+    if (m) return { evidence: m[0].slice(0, 100), mitre, setting };
+  }
+  return null;
+}
+
 // ─── Layer 0 entry point ──────────────────────────────────────────────────────
 
 export function runLayer0(prompt: string, activeDetections: ActiveDetection[]): Violation[] {
@@ -249,6 +309,25 @@ export function runLayer0(prompt: string, activeDetections: ActiveDetection[]): 
         techniqueName: 'LLM Prompt Injection via Third-Party Content',
         tactic: 'ml-attack-staging',
       },
+    });
+  }
+
+  // Global jailbreak hard-check — instruction overrides, identity removal, delimiter
+  // injection, unrestricted-mode claims, and fake system authority are unambiguous
+  // attack signals. These run globally so profile misconfiguration cannot expose them.
+  const jailbreakHit = checkGlobalJailbreak(prompt);
+  if (jailbreakHit) {
+    const jbkDet = activeDetections.find(ad => ad.detection.id === 'det-jailbreak' || ad.detection.id === 'det-injection');
+    violations.push({
+      policyName:     jbkDet?.policyName     ?? 'Global Safety Policy',
+      categoryName:   jbkDet?.categoryName   ?? 'Security Controls',
+      detectionName:  jbkDet?.detection.name ?? 'Jailbreak / Injection',
+      setting: jailbreakHit.setting,
+      mode: 'block',
+      confidence: 1.0,
+      detectedBy: 'heuristic',
+      evidence: jailbreakHit.evidence,
+      mitreAtlas: jailbreakHit.mitre,
     });
   }
 

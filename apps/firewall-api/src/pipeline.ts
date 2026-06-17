@@ -81,11 +81,10 @@ export async function runPipeline(
     return buildResponse(requestId, 'block', profile, l0Violations, perLayer, startTime, false);
   }
 
-  // If the profile has no active detections, global checks have already run —
-  // nothing further to do.
-  if (activeDetections.length === 0) {
-    return buildResponse(requestId, 'pass', profile, [], perLayer, startTime, false);
-  }
+  // NOTE: We do NOT short-circuit here when activeDetections is empty.
+  // L3 is a mandatory global safety net — it runs on every request regardless
+  // of profile configuration. Missing a jailbreak because a profile has no
+  // detections configured is unacceptable for a security product.
 
   // ── Layer 1 (cache) + Layer 2 (vector): parallel I/O ─────────────────────
   const normalizedHash = await hashPrompt(prompt);
