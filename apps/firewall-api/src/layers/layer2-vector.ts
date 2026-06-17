@@ -18,7 +18,7 @@ export async function checkLayer2Vector(
 
   const queryResult = await env.FIREWALL_VECTORIZE.query(vector, { topK: 5, returnMetadata: 'all' });
   const topMatch = queryResult.matches[0];
-  if (!topMatch || topMatch.score < 0.82) return [];
+  if (!topMatch || topMatch.score < 0.75) return [];
 
   const meta = (topMatch.metadata ?? {}) as Record<string, string>;
   const matchCategory = meta['category'] ?? 'injection';
