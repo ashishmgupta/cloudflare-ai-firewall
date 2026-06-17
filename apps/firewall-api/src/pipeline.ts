@@ -133,7 +133,7 @@ export async function runPipeline(
   // where the LLM has insufficient context (industry-standard 8-word floor).
   const wordCount = prompt.trim().split(/\s+/).filter(Boolean).length;
 
-  if (wordCount >= 8) {
+  if (wordCount >= 4) {
     const l3t = Date.now();
     try {
       const l3Violations = await checkLayer3Llm(prompt, activeDetections, env);
