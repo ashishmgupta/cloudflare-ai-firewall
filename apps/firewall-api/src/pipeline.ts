@@ -5,7 +5,6 @@ import type {
   Violation,
   Verdict,
   Setting,
-  Detection,
 } from '@firewall/shared';
 import type { Env } from './env.js';
 import { type ActiveDetection, runLayer0 } from './layers/layer0-heuristics.js';
@@ -66,6 +65,9 @@ export async function runPipeline(
   const startTime = Date.now();
   const perLayer: Record<string, number> = {};
 
+  // Extract the prompt: last message in the messages array (OpenAI convention)
+  const prompt = req.messages[req.messages.length - 1].content;
+
   const activeDetections = getActiveDetections(profile);
   if (activeDetections.length === 0) {
     return buildResponse(requestId, 'pass', profile, [], perLayer, startTime, false);
@@ -73,7 +75,7 @@ export async function runPipeline(
 
   // ── Layer 0: synchronous heuristics (0ms I/O) ─────────────────────────────
   const l0t = Date.now();
-  const l0Violations = runLayer0(req.prompt, activeDetections);
+  const l0Violations = runLayer0(prompt, activeDetections);
   perLayer['layer0'] = Date.now() - l0t;
 
   // Immediate block on confident heuristic (no need to call AI)
@@ -82,7 +84,7 @@ export async function runPipeline(
   }
 
   // ── Layer 1 (cache) + Layer 2 (vector): parallel I/O ─────────────────────
-  const normalizedHash = await hashPrompt(req.prompt);
+  const normalizedHash = await hashPrompt(prompt);
   const cacheKey = `${normalizedHash}:${profile.id}`;
 
   const cachePromise = !bypassCache
@@ -93,7 +95,7 @@ export async function runPipeline(
     ad => ad.detection.id === 'det-injection' || ad.detection.id === 'det-jailbreak',
   );
   const vectorPromise = needsVector
-    ? checkLayer2Vector(req.prompt, activeDetections, env)
+    ? checkLayer2Vector(prompt, activeDetections, env)
     : Promise.resolve([] as Violation[]);
 
   const l1t = Date.now();
@@ -129,12 +131,12 @@ export async function runPipeline(
   // Runs against all active detections — the model classifies freely and
   // matching happens inside checkLayer3Llm. Skipped on very short prompts
   // where the LLM has insufficient context (industry-standard 8-word floor).
-  const wordCount = req.prompt.trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = prompt.trim().split(/\s+/).filter(Boolean).length;
 
   if (wordCount >= 8) {
     const l3t = Date.now();
     try {
-      const l3Violations = await checkLayer3Llm(req.prompt, activeDetections, env);
+      const l3Violations = await checkLayer3Llm(prompt, activeDetections, env);
       perLayer['layer3'] = Date.now() - l3t;
       violations.push(...l3Violations);
     } catch (err) {

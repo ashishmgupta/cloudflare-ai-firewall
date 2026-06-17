@@ -107,9 +107,13 @@ export const VerdictSchema = z.enum(['pass', 'block', 'monitor']);
 
 // ─── Inspect request / response ───────────────────────────────────────────────
 
+export const MessageSchema = z.object({
+  role: z.enum(['system', 'user', 'assistant']),
+  content: z.string().min(0),
+});
+
 export const InspectRequestSchema = z.object({
-  prompt: z.string().min(1),
-  context: z.array(z.string()).optional(),
+  messages: z.array(MessageSchema).min(1),
   metadata: z.record(z.unknown()).optional(),
 });
 

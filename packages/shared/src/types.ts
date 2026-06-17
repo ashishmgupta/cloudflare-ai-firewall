@@ -10,6 +10,7 @@ import type {
   ViolationSchema,
   VerdictSchema,
   DetectedBySchema,
+  MessageSchema,
   InspectRequestSchema,
   InspectResponseSchema,
   AuditEventSchema,
@@ -25,6 +26,7 @@ export type ApiKeyRecord = z.infer<typeof ApiKeyRecordSchema>;
 export type Violation = z.infer<typeof ViolationSchema>;
 export type Verdict = z.infer<typeof VerdictSchema>;
 export type DetectedBy = z.infer<typeof DetectedBySchema>;
+export type Message = z.infer<typeof MessageSchema>;
 export type InspectRequest = z.infer<typeof InspectRequestSchema>;
 export type InspectResponse = z.infer<typeof InspectResponseSchema>;
 export type AuditEvent = z.infer<typeof AuditEventSchema>;

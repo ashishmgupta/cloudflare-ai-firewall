@@ -177,7 +177,7 @@ app.post('/api/adhoc', async c => {
   const inspectKey = await getInspectKey(c.env.DB, profileId);
   if (!inspectKey) return c.json({ error: 'Profile not configured for inspection', code: 'PROFILE_NOT_FOUND' }, 404);
 
-  const requestBody = JSON.stringify({ prompt });
+  const requestBody = JSON.stringify({ messages: [{ role: 'user', content: prompt }] });
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-API-Key': '[redacted]',
@@ -332,7 +332,7 @@ app.post('/api/run-set', async c => {
         violations: '[]',
         latency_ms: 0,
         request_id: null,
-        raw_request: JSON.stringify({ prompt: set.items[i].prompt }),
+        raw_request: JSON.stringify({ messages: [{ role: 'user', content: set.items[i].prompt }] }),
         raw_response: JSON.stringify({ error: errMsg }),
         ...userCtx,
         profile_name: profileName,
@@ -413,7 +413,7 @@ async function runAndStore(
   userCtx: { username: string | null; ip_address: string | null; country: string | null; city: string | null },
   profileName: string | null = null,
 ) {
-  const requestBody = JSON.stringify({ prompt });
+  const requestBody = JSON.stringify({ messages: [{ role: 'user', content: prompt }] });
   const requestHeaders = { 'Content-Type': 'application/json', 'X-API-Key': '[redacted]' };
   const t0 = Date.now();
 
@@ -454,7 +454,7 @@ async function runAndStore(
       method: 'POST',
       url: 'https://firewall-api/v1/inspect',
       headers: requestHeaders,
-      body: { prompt },
+      body: { messages: [{ role: 'user', content: prompt }] },
     }),
     raw_response: JSON.stringify({
       status: res.status,

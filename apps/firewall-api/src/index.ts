@@ -68,7 +68,11 @@ app.delete('/v1/cache', authMiddleware, async c => {
 app.post('/v1/inspect', authMiddleware, async c => {
   const body = await c.req.json();
 
-  const byteLen = new TextEncoder().encode(body?.prompt ?? '').length;
+  // Check the last message (the prompt being inspected) against the byte limit
+  const lastContent = Array.isArray(body?.messages)
+    ? (body.messages[body.messages.length - 1]?.content ?? '')
+    : '';
+  const byteLen = new TextEncoder().encode(lastContent).length;
   if (byteLen > MAX_PROMPT_BYTES) {
     return c.json(
       { error: `Prompt exceeds ${MAX_PROMPT_BYTES} bytes`, code: 'PROMPT_TOO_LARGE' },
