@@ -308,14 +308,24 @@ function loadEvents() {
           '</tr>' +
           '<tr id="' + detailId + '" class="hidden">' +
           '<td colspan="10" class="pb-4 pt-1">' +
+            '<div class="mb-3">' +
+              '<div class="flex items-center justify-between mb-1">' +
+                '<div class="text-xs text-gray-500 uppercase tracking-wider">Full Prompt</div>' +
+                '<button onclick="copyCurl(this.dataset.req,this.dataset.prompt,this)"' +
+                  ' data-req="' + esc(e.raw_request || '') + '"' +
+                  ' data-prompt="' + esc(e.prompt || '') + '"' +
+                  ' style="font-size:11px;padding:2px 10px;border-radius:4px;background:#1e3a5f;color:#93c5fd;border:1px solid #1d4ed8;cursor:pointer">Copy cURL</button>' +
+              '</div>' +
+              '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-gray-200 overflow-auto" style="white-space:pre-wrap;word-break:break-word;max-height:160px">' + esc(e.prompt) + '</pre>' +
+            '</div>' +
             '<div class="grid grid-cols-2 gap-3">' +
               '<div>' +
                 '<div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Request</div>' +
-                '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-green-300 overflow-auto">' + esc(fmtJson(e.raw_request)) + '</pre>' +
+                '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-green-300 overflow-auto" style="max-height:200px">' + esc(fmtJson(e.raw_request)) + '</pre>' +
               '</div>' +
               '<div>' +
                 '<div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Response</div>' +
-                '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-blue-300 overflow-auto">' + esc(fmtJson(e.raw_response)) + '</pre>' +
+                '<pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-blue-300 overflow-auto" style="max-height:200px">' + esc(fmtJson(e.raw_response)) + '</pre>' +
               '</div>' +
             '</div>' +
           '</td>' +
@@ -906,6 +916,45 @@ function submitAddInspectKey() {
   })
     .then(function() { hideAddInspectKey(); loadAdminInspectKeys(); })
     .catch(function(err) { errEl.textContent = String(err); errEl.classList.remove('hidden'); });
+}
+
+// ── cURL copy ─────────────────────────────────────────────────────────────────
+function copyCurl(rawReq, prompt, btn) {
+  var bsl = String.fromCharCode(92);
+  var dq  = String.fromCharCode(34);
+
+  var body;
+  try {
+    var parsed = JSON.parse(rawReq);
+    body = (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0)
+      ? rawReq
+      : JSON.stringify({ messages: [{ role: 'user', content: prompt }] });
+  } catch(e) {
+    body = JSON.stringify({ messages: [{ role: 'user', content: prompt }] });
+  }
+
+  var escaped = '';
+  for (var i = 0; i < body.length; i++) {
+    var ch = body[i];
+    if (ch === bsl) escaped += bsl + bsl;
+    else if (ch === dq) escaped += bsl + dq;
+    else escaped += ch;
+  }
+
+  var cmd = 'curl -s -X POST ' + dq + 'https://aifirewallapi.ashishlabs.com/v1/inspect' + dq +
+    ' -H ' + dq + 'Content-Type: application/json' + dq +
+    ' -H ' + dq + 'X-API-Key: YOUR_API_KEY' + dq +
+    ' -d ' + dq + escaped + dq;
+
+  navigator.clipboard.writeText(cmd).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.color = '#4ade80';
+    setTimeout(function() { btn.textContent = orig; btn.style.color = ''; }, 1500);
+  }).catch(function() {
+    console.log(cmd);
+    alert('Clipboard unavailable — command logged to browser console.');
+  });
 }
 
 // ── Init: check session ────────────────────────────────────────────────────────

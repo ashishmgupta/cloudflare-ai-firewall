@@ -88,6 +88,7 @@ app.post('/v1/inspect', authMiddleware, async c => {
   const profile = c.get('profile' as never) as SecurityProfile;
   const requestId = crypto.randomUUID();
   const bypassCache = c.req.header('X-Bypass-Cache') === '1';
+  const prompt = parsed.data.messages[parsed.data.messages.length - 1].content;
 
   const wallStart = Date.now();
   const result = await runPipeline(parsed.data, profile, c.env, c.executionCtx, requestId, bypassCache);
@@ -111,6 +112,35 @@ app.post('/v1/inspect', authMiddleware, async c => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { latencyMs: _dropped, ...responseBody } = result;
   const status = result.verdict === 'block' ? 403 : 200;
+
+  // Log all external API calls to the shared events DB (non-blocking)
+  if (c.env.EVENTS_DB) {
+    const cf = (c.req.raw as Request & { cf?: Record<string, string> }).cf;
+    c.executionCtx.waitUntil(
+      c.env.EVENTS_DB.prepare(
+        `INSERT INTO events
+           (id,ts,prompt_set,prompt_label,prompt,verdict,expected,violations,latency_ms,request_id,raw_request,raw_response,ip_address,country,city)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        crypto.randomUUID(),
+        new Date().toISOString(),
+        'external',
+        'external',
+        prompt,
+        result.verdict,
+        null,
+        JSON.stringify(result.violations),
+        result.latencyMs?.total ?? wallMs,
+        requestId,
+        JSON.stringify(parsed.data),
+        JSON.stringify(responseBody),
+        c.req.header('CF-Connecting-IP') ?? null,
+        cf?.country ?? null,
+        cf?.city ?? null,
+      ).run().catch(err => console.error('[firewall-api] event log failed:', err))
+    );
+  }
+
   return c.json(responseBody, status);
 });
 

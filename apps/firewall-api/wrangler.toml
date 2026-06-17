@@ -22,6 +22,11 @@ id = "08bdcede02144671a84b46fb7bd1881f"
 binding = "FIREWALL_VECTORIZE"
 index_name = "ai-firewall-attacks"
 
+[[d1_databases]]
+binding       = "EVENTS_DB"
+database_name = "firewall-events"
+database_id   = "91379b5b-c82f-4c14-8351-c0d57eca83aa"
+
 [vars]
 ENVIRONMENT = "production"
 
