@@ -140,7 +140,7 @@ export async function runPipeline(
   if (wordCount >= 4) {
     const l3t = Date.now();
     try {
-      const l3Violations = await checkLayer3Llm(prompt, activeDetections, env);
+      const l3Violations = await checkLayer3Llm(req.messages, activeDetections, env);
       perLayer['layer3'] = Date.now() - l3t;
       violations.push(...l3Violations);
     } catch (err) {

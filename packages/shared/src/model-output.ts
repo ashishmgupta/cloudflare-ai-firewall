@@ -13,6 +13,7 @@ export const L3ClassificationSchema = z.object({
 });
 
 export const L3ModelOutputSchema = z.object({
+  reasoning: z.string().optional(),
   verdict: z.enum(['pass', 'block', 'monitor']),
   classifications: z.array(L3ClassificationSchema),
 });
