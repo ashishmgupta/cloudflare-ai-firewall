@@ -149,20 +149,46 @@ function showTab(name) {
 }
 
 // ── Runner ─────────────────────────────────────────────────────────────────────
+function makeSetCard(s) {
+  var badge = '';
+  if (s.category === 'framework') {
+    badge = '<span style="font-size:10px;font-weight:600;letter-spacing:.04em;padding:2px 7px;border-radius:9999px;background:#1e3a5f;color:#60a5fa;margin-left:8px;vertical-align:middle;">' + esc(s.id === 'mitre-atlas' ? 'MITRE' : s.id === 'owasp-llm' ? 'OWASP' : 'NIST') + '</span>';
+  }
+  return '<div class="card flex flex-col" data-set-id="' + esc(s.id) + '" data-set-name="' + esc(s.name) + '">' +
+    '<div class="text-base font-semibold text-white mb-1">' + esc(s.name) + badge + '</div>' +
+    '<div class="text-gray-400 text-xs mb-3 leading-relaxed">' + esc(s.description) + '</div>' +
+    '<div class="mt-auto flex items-center justify-between">' +
+      '<span class="text-gray-600 text-xs">' + s.items.length + ' prompts</span>' +
+      '<button class="btn-primary run-set-btn">Run Set</button>' +
+    '</div>' +
+  '</div>';
+}
+
 function loadPromptSets() {
   fetch('/api/prompt-sets').then(function(r) { return r.json(); }).then(function(sets) {
+    var general = sets.filter(function(s) { return s.category !== 'framework'; });
+    var framework = sets.filter(function(s) { return s.category === 'framework'; });
+
     var html = '';
-    sets.forEach(function(s) {
-      html +=
-        '<div class="card flex flex-col" data-set-id="' + esc(s.id) + '" data-set-name="' + esc(s.name) + '">' +
-          '<div class="text-base font-semibold text-white mb-1">' + esc(s.name) + '</div>' +
-          '<div class="text-gray-400 text-xs mb-3 leading-relaxed">' + esc(s.description) + '</div>' +
-          '<div class="mt-auto flex items-center justify-between">' +
-            '<span class="text-gray-600 text-xs">' + s.items.length + ' prompts</span>' +
-            '<button class="btn-primary run-set-btn">Run Set</button>' +
-          '</div>' +
-        '</div>';
-    });
+
+    // General sets
+    html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">';
+    general.forEach(function(s) { html += makeSetCard(s); });
+    html += '</div>';
+
+    // Framework benchmark sets
+    if (framework.length > 0) {
+      html += '<div class="mb-3">' +
+        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">' +
+          '<span class="text-sm font-semibold" style="color:#93c5fd;letter-spacing:.05em;text-transform:uppercase;">Framework Benchmarks</span>' +
+          '<div style="flex:1;height:1px;background:linear-gradient(to right,#1e3a5f,transparent);"></div>' +
+          '<span class="text-xs text-gray-500">MITRE ATLAS · OWASP LLM Top 10 · NIST AI RMF</span>' +
+        '</div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
+      framework.forEach(function(s) { html += makeSetCard(s); });
+      html += '</div></div>';
+    }
+
     document.getElementById('sets-grid').innerHTML = html;
     document.querySelectorAll('.run-set-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -1067,7 +1093,7 @@ export function getHtml(): string {
 '    <div class="mb-5 px-4 py-3 bg-gray-900 border border-gray-800 rounded text-sm text-gray-400">\n' +
 '      Select a prompt set below and click <strong class="text-gray-300">Run Set</strong> to send curated prompts through the firewall API. Results compare the expected verdict against the actual verdict returned, and show detected violations with per-request latency.\n' +
 '    </div>\n' +
-'    <div class="grid grid-cols-3 gap-4 mb-8" id="sets-grid"></div>\n' +
+'    <div id="sets-grid"></div>\n' +
 '    <div id="run-summary" class="hidden mb-4 card flex items-center gap-6">\n' +
 '      <div class="text-sm font-semibold text-white" id="sum-name"></div>\n' +
 '      <div class="flex items-center gap-1 text-sm">\n' +
