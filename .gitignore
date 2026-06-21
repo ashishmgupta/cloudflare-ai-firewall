@@ -5,3 +5,4 @@ creds
 .env
 *.env
 *.local
+docs/ai-chat-context-prompt.md
