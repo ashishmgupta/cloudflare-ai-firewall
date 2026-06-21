@@ -33,7 +33,7 @@ function showApp(user) {
     usersTab.classList.add('hidden');
     purgeCacheBtn.classList.add('hidden');
   }
-  loadPromptSets();
+  initRunnerTab();
 }
 
 function login() {
@@ -116,9 +116,12 @@ var SET_NAMES = {
   'security-controls': 'Security Controls',
   'content-moderation':'Content Mod',
   'model-judgment':    'Model Judgment',
+  'mitre-atlas':       'MITRE ATLAS',
+  'owasp-llm':         'OWASP LLM Top 10',
+  'nist-ai-rmf':       'NIST AI RMF',
 };
-var SET_IDS    = ['sensitive-data','security-controls','content-moderation','model-judgment'];
-var SET_LABELS = ['Sensitive Data','Security Controls','Content Mod','Model Judgment'];
+var SET_IDS    = ['sensitive-data','security-controls','content-moderation','model-judgment','mitre-atlas','owasp-llm','nist-ai-rmf'];
+var SET_LABELS = ['Sensitive Data','Security Controls','Content Mod','Model Judgment','MITRE ATLAS','OWASP LLM Top 10','NIST AI RMF'];
 
 function latencyFmt(ms) {
   return ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : ms + 'ms';
@@ -142,6 +145,7 @@ function showTab(name) {
     if (pane) pane.classList.toggle('hidden', t !== name);
     if (btn)  btn.classList.toggle('active', t === name);
   });
+  if (name === 'runner')  loadRunHistory();
   if (name === 'events')  loadEvents();
   if (name === 'stats')   loadStats();
   if (name === 'users')   { loadUsers(); loadAdminInspectKeys(); }
@@ -149,115 +153,251 @@ function showTab(name) {
 }
 
 // ── Runner ─────────────────────────────────────────────────────────────────────
-function makeSetCard(s) {
-  var badge = '';
-  if (s.category === 'framework') {
-    badge = '<span style="font-size:10px;font-weight:600;letter-spacing:.04em;padding:2px 7px;border-radius:9999px;background:#1e3a5f;color:#60a5fa;margin-left:8px;vertical-align:middle;">' + esc(s.id === 'mitre-atlas' ? 'MITRE' : s.id === 'owasp-llm' ? 'OWASP' : 'NIST') + '</span>';
-  }
-  return '<div class="card flex flex-col" data-set-id="' + esc(s.id) + '" data-set-name="' + esc(s.name) + '">' +
-    '<div class="text-base font-semibold text-white mb-1">' + esc(s.name) + badge + '</div>' +
-    '<div class="text-gray-400 text-xs mb-3 leading-relaxed">' + esc(s.description) + '</div>' +
-    '<div class="mt-auto flex items-center justify-between">' +
-      '<span class="text-gray-600 text-xs">' + s.items.length + ' prompts</span>' +
-      '<button class="btn-primary run-set-btn">Run Set</button>' +
-    '</div>' +
-  '</div>';
+var _currentReport = null;
+
+function initRunnerTab() {
+  loadRunnerDropdowns();
+  loadRunHistory();
 }
 
-function loadPromptSets() {
+function loadRunnerDropdowns() {
   fetch('/api/prompt-sets').then(function(r) { return r.json(); }).then(function(sets) {
-    var general = sets.filter(function(s) { return s.category !== 'framework'; });
-    var framework = sets.filter(function(s) { return s.category === 'framework'; });
-
-    var html = '';
-
-    // General sets
-    html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">';
-    general.forEach(function(s) { html += makeSetCard(s); });
-    html += '</div>';
-
-    // Framework benchmark sets
-    if (framework.length > 0) {
-      html += '<div class="mb-3">' +
-        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">' +
-          '<span class="text-sm font-semibold" style="color:#93c5fd;letter-spacing:.05em;text-transform:uppercase;">Framework Benchmarks</span>' +
-          '<div style="flex:1;height:1px;background:linear-gradient(to right,#1e3a5f,transparent);"></div>' +
-          '<span class="text-xs text-gray-500">MITRE ATLAS · OWASP LLM Top 10 · NIST AI RMF</span>' +
-        '</div>' +
-        '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
-      framework.forEach(function(s) { html += makeSetCard(s); });
-      html += '</div></div>';
-    }
-
-    document.getElementById('sets-grid').innerHTML = html;
-    document.querySelectorAll('.run-set-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var card = btn.closest('[data-set-id]');
-        if (card) runSet(card.getAttribute('data-set-id'), card.getAttribute('data-set-name'));
-      });
+    var opts = '<option value="">Select a prompt set...</option>';
+    sets.forEach(function(s) {
+      opts += '<option value="' + esc(s.id) + '">' + esc(s.name) + ' (' + s.items.length + ' prompts)</option>';
     });
+    document.getElementById('run-set-select').innerHTML = opts;
+  }).catch(function() {});
+  var profileEndpoint = (currentUser && currentUser.role === 'admin') ? '/api/pm-profiles' : '/api/inspect-profiles';
+  api(profileEndpoint).then(function(profiles) {
+    var opts = '<option value="">Select a profile...</option>';
+    profiles.forEach(function(p) {
+      var hasKey = p.has_key !== false;
+      if (hasKey) {
+        opts += '<option value="' + esc(p.profile_id) + '">' + esc(p.profile_name) + '</option>';
+      } else {
+        opts += '<option value="" disabled>' + esc(p.profile_name) + ' (no key - add in Users &gt; Keys)</option>';
+      }
+    });
+    document.getElementById('run-profile-select').innerHTML = opts;
+  }).catch(function() {
+    document.getElementById('run-profile-select').innerHTML = '<option value="">No profiles configured</option>';
   });
 }
 
-function runSet(setId, setName) {
-  document.querySelectorAll('.run-set-btn').forEach(function(b) { b.disabled = true; });
+function startRun() {
+  var setId     = document.getElementById('run-set-select').value;
+  var profileId = document.getElementById('run-profile-select').value;
+  if (!setId)     { alert('Please select a prompt set.'); return; }
+  if (!profileId) { alert('Please select a profile.'); return; }
 
-  var sumEl  = document.getElementById('run-summary');
-  var resEl  = document.getElementById('run-results');
-  var bodyEl = document.getElementById('results-body');
-  sumEl.classList.remove('hidden');
-  resEl.classList.remove('hidden');
-  document.getElementById('sum-name').textContent    = setName;
-  document.getElementById('sum-pass-n').textContent  = '…';
-  document.getElementById('sum-fail-n').textContent  = '…';
-  document.getElementById('sum-latency').textContent = '';
-  document.getElementById('sum-spinner').classList.remove('hidden');
-  bodyEl.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-gray-600">' +
-    '<div class="spinner" style="margin:auto"></div></td></tr>';
+  var btn       = document.getElementById('run-btn');
+  var progWrap  = document.getElementById('run-progress-wrap');
+  var progLabel = document.getElementById('run-progress-label');
+  var progPct   = document.getElementById('run-progress-pct');
+  var progBar   = document.getElementById('run-progress-bar');
 
-  api('/api/run-set', { method: 'POST', body: JSON.stringify({ setId: setId }) })
-    .then(function(data) {
-      var passed = data.results.filter(function(r) { return r.pass; }).length;
-      var failed = data.results.length - passed;
-      var avgMs  = Math.round(
-        data.results.reduce(function(s, r) { return s + (r.latencyMs || 0); }, 0) / data.results.length
-      );
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  progWrap.classList.remove('hidden');
+  progLabel.textContent = 'Sending prompts...';
+  progPct.textContent   = '0%';
+  progBar.style.width   = '0%';
 
-      document.getElementById('sum-pass-n').textContent  = passed;
-      document.getElementById('sum-fail-n').textContent  = failed;
-      document.getElementById('sum-latency').textContent = 'avg ' + latencyFmt(avgMs);
-      document.getElementById('sum-spinner').classList.add('hidden');
+  api('/api/run-set', {
+    method: 'POST',
+    body: JSON.stringify({ setId: setId, profileId: profileId }),
+  }).then(function(data) {
+    progLabel.textContent = 'Complete: ' + data.summary.total + ' prompts processed.';
+    progPct.textContent   = '100%';
+    progBar.style.width   = '100%';
+    loadRunHistory();
+    setTimeout(function() { progWrap.classList.add('hidden'); }, 2500);
+  }).catch(function(err) {
+    progLabel.textContent = 'Error: ' + String(err);
+    progPct.textContent   = '';
+  }).finally(function() {
+    btn.disabled = false;
+    btn.textContent = 'Run Set';
+  });
+}
 
-      var rows = '';
-      data.results.forEach(function(r) {
-        var viols = r.error
-          ? '<span class="text-red-400 text-xs mono">' + esc(r.error) + '</span>'
-          : (r.violations || []).map(function(v) {
-              return '<span class="inline-block bg-gray-800 text-gray-400 rounded px-1 mr-1 text-xs mono">' +
-                esc(v.detectionName || v.setting || '') + '</span>';
-            }).join('') || '<span class="text-gray-700">—</span>';
-
-        rows +=
-          '<tr>' +
-          '<td><div class="text-sm text-gray-200 font-medium">' + esc(r.label) + '</div>' +
-          '<div class="prompt-text" title="' + esc(r.prompt) + '">' + esc(r.prompt) + '</div></td>' +
-          '<td>' + badge(r.expected) + '</td>' +
-          '<td>' + badge(r.verdict) + '</td>' +
-          '<td class="text-center">' + checkIcon(r.verdict, r.expected) + '</td>' +
-          '<td>' + viols + '</td>' +
-          '<td class="text-right text-gray-400 text-xs">' + latencyFmt(r.latencyMs || 0) + '</td>' +
-          '</tr>';
-      });
-      bodyEl.innerHTML = rows;
-    })
-    .catch(function(err) {
-      document.getElementById('sum-name').textContent = 'Error';
-      document.getElementById('sum-spinner').classList.add('hidden');
-      bodyEl.innerHTML = '<tr><td colspan="6" class="py-4 text-red-400 text-sm">' + esc(String(err)) + '</td></tr>';
-    })
-    .finally(function() {
-      document.querySelectorAll('.run-set-btn').forEach(function(b) { b.disabled = false; });
+function loadRunHistory() {
+  var tbody = document.getElementById('run-history-body');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-gray-600"><div class="spinner" style="margin:auto"></div></td></tr>';
+  api('/api/runs').then(function(runs) {
+    if (!runs.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-gray-600">No runs yet - select a set and click Run Set.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = runs.map(function(r) {
+      var pct = r.total_prompts > 0 ? Math.round(r.blocked * 100 / r.total_prompts) : 0;
+      return '<tr>' +
+        '<td class="text-xs text-gray-400">' + fmtDatetime(r.ts) + '</td>' +
+        '<td class="text-sm text-gray-200">' + esc(r.prompt_set_name) + '</td>' +
+        '<td class="text-xs text-gray-400">' + esc(r.profile_name || '-') + '</td>' +
+        '<td class="text-right text-sm">' + r.total_prompts + '</td>' +
+        '<td class="text-right text-sm font-semibold text-red-400">' + r.blocked + '</td>' +
+        '<td class="text-right text-sm font-semibold text-green-400">' + r.passed + '</td>' +
+        '<td class="text-right text-sm">' + pct + '%</td>' +
+        '<td class="text-right text-xs text-gray-400">' + Math.round(r.avg_latency_ms) + 'ms</td>' +
+        '<td class="text-right"><button class="run-report-btn btn-secondary text-xs" data-run-id="' + esc(r.id) + '">Report</button></td>' +
+        '</tr>';
+    }).join('');
+    document.querySelectorAll('.run-report-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { showReportPage(btn.getAttribute('data-run-id')); });
     });
+  }).catch(function(err) {
+    tbody.innerHTML = '<tr><td colspan="9" class="py-4 text-red-400 text-sm text-center">' + esc(String(err)) + '</td></tr>';
+  });
+}
+
+function summaryCard(label, value, cls) {
+  return '<div class="card text-center"><div class="text-2xl font-bold mb-1' + (cls ? ' ' + cls : '') + '">' +
+    esc(String(value)) + '</div><div class="text-xs text-gray-500">' + esc(label) + '</div></div>';
+}
+
+function toggleDetail(id) {
+  var el = document.getElementById(id);
+  if (el) el.classList.toggle('hidden');
+}
+
+function showReportPage(runId) {
+  document.getElementById('runner-view').classList.add('hidden');
+  document.getElementById('report-view').classList.remove('hidden');
+  document.getElementById('report-title').textContent = 'Loading...';
+  document.getElementById('report-summary-cards').innerHTML = '';
+  document.getElementById('report-body').innerHTML =
+    '<tr><td colspan="7" class="py-8 text-center text-gray-600"><div class="spinner" style="margin:auto"></div></td></tr>';
+
+  api('/api/runs/' + encodeURIComponent(runId) + '/events').then(function(data) {
+    _currentReport = data;
+    var run = data.run;
+    var pct = run.total_prompts > 0 ? Math.round(run.blocked * 100 / run.total_prompts) : 0;
+    document.getElementById('report-title').textContent =
+      run.prompt_set_name + ' - ' + (run.profile_name || 'no profile') + ' - ' + fmtDatetime(run.ts);
+    document.getElementById('report-summary-cards').innerHTML =
+      summaryCard('Prompts',     run.total_prompts, '') +
+      summaryCard('Blocked',     run.blocked,       'text-red-400') +
+      summaryCard('Passed',      run.passed,        'text-green-400') +
+      summaryCard('Block Rate',  pct + '%',         pct >= 50 ? 'text-red-400' : 'text-green-400') +
+      summaryCard('Avg Latency', Math.round(run.avg_latency_ms) + 'ms', '');
+    document.getElementById('report-body').innerHTML = data.events.map(function(e, i) {
+      var viols = [];
+      try { viols = JSON.parse(e.violations || '[]'); } catch(ex) {}
+      var violHtml = viols.length
+        ? viols.map(function(v) {
+            return '<span class="inline-block bg-gray-800 text-gray-400 rounded px-1 mr-1 text-xs mono">' +
+              esc(v.detectionName || v.setting || '') + '</span>';
+          }).join('')
+        : '<span class="text-gray-700">-</span>';
+      var detId = 'rpt-' + i;
+      return '<tr class="cursor-pointer hover:bg-gray-900/50 rpt-row" data-det-id="' + detId + '">' +
+        '<td class="text-center py-2 text-gray-600 text-xs select-none">&rsaquo;</td>' +
+        '<td><div class="text-sm text-gray-200 font-medium">' + esc(e.prompt_label) + '</div>' +
+          '<div class="prompt-text" title="' + esc(e.prompt) + '">' + esc(e.prompt) + '</div></td>' +
+        '<td>' + badge(e.expected || '') + '</td>' +
+        '<td>' + badge(e.verdict) + '</td>' +
+        '<td class="text-center">' + checkIcon(e.verdict, e.expected) + '</td>' +
+        '<td>' + violHtml + '</td>' +
+        '<td class="text-right text-gray-400 text-xs">' + latencyFmt(e.latency_ms || 0) + '</td>' +
+        '</tr>' +
+        '<tr id="' + detId + '" class="hidden">' +
+        '<td colspan="7" style="padding:0 0 12px 0">' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:8px 16px">' +
+            '<div><div class="text-xs text-gray-500 mb-1 font-semibold">REQUEST</div>' +
+              '<pre style="background:#030712;border-radius:4px;padding:8px;font-size:11px;color:#d1d5db;overflow:auto;max-height:200px;margin:0;white-space:pre-wrap;word-break:break-all">' +
+              esc(fmtJson(e.raw_request)) + '</pre></div>' +
+            '<div><div class="text-xs text-gray-500 mb-1 font-semibold">RESPONSE</div>' +
+              '<pre style="background:#030712;border-radius:4px;padding:8px;font-size:11px;color:#d1d5db;overflow:auto;max-height:200px;margin:0;white-space:pre-wrap;word-break:break-all">' +
+              esc(fmtJson(e.raw_response)) + '</pre></div>' +
+          '</div>' +
+        '</td></tr>';
+    }).join('');
+    document.querySelectorAll('.rpt-row').forEach(function(tr) {
+      tr.addEventListener('click', function() { toggleDetail(tr.getAttribute('data-det-id')); });
+    });
+  }).catch(function(err) {
+    document.getElementById('report-body').innerHTML =
+      '<tr><td colspan="7" class="py-4 text-red-400 text-sm text-center">' + esc(String(err)) + '</td></tr>';
+  });
+}
+
+function hideReportPage() {
+  _currentReport = null;
+  document.getElementById('report-view').classList.add('hidden');
+  document.getElementById('runner-view').classList.remove('hidden');
+}
+
+function exportReportHtml() {
+  if (!_currentReport) return;
+  var run    = _currentReport.run;
+  var events = _currentReport.events;
+  var pct    = run.total_prompts > 0 ? Math.round(run.blocked * 100 / run.total_prompts) : 0;
+
+  var out = '<!DOCTYPE html><html><head>' +
+    '<meta charset="UTF-8">' +
+    '<title>Firewall Report - ' + esc(run.prompt_set_name) + '</title>' +
+    '<style>' +
+    'body{font-family:monospace;background:#0f0f0f;color:#e5e7eb;padding:24px;margin:0}' +
+    'h1{font-size:20px;margin:0 0 4px}h2{font-size:13px;color:#9ca3af;margin:0 0 20px;font-weight:400}' +
+    '.sum{display:flex;gap:32px;background:#111827;border:1px solid #1f2937;border-radius:8px;padding:16px;margin-bottom:20px}' +
+    '.sv{font-size:26px;font-weight:700}.sl{font-size:11px;color:#6b7280}' +
+    '.red{color:#f87171}.green{color:#4ade80}' +
+    '.card{background:#111827;border:1px solid #1f2937;border-radius:8px;padding:16px;margin-bottom:12px}' +
+    '.ph{display:flex;align-items:center;gap:10px;margin-bottom:8px}' +
+    '.lbl{font-weight:600;font-size:14px}.lat{margin-left:auto;color:#6b7280;font-size:12px}' +
+    '.badge{padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700}' +
+    '.b-block{background:#991b1b;color:#fca5a5}.b-pass{background:#064e3b;color:#6ee7b7}.b-monitor{background:#78350f;color:#fcd34d}' +
+    '.pt{color:#9ca3af;font-size:12px;margin-bottom:8px}' +
+    '.rg{display:grid;grid-template-columns:1fr 1fr;gap:8px}' +
+    '.rl{font-size:10px;color:#6b7280;margin-bottom:4px;font-weight:700}' +
+    'pre{background:#030712;border-radius:4px;padding:8px;font-size:11px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:0}' +
+    '.vi{font-size:11px;color:#9ca3af;margin-bottom:8px}' +
+    '.ok{color:#4ade80}.fail{color:#f87171}' +
+    '</style></head><body>' +
+    '<h1>AI Firewall Run Report</h1>' +
+    '<h2>' + esc(run.prompt_set_name) + ' &middot; ' + esc(run.profile_name || 'no profile') + ' &middot; ' + fmtDatetime(run.ts) + '</h2>' +
+    '<div class="sum">' +
+    '<div><div class="sv">' + run.total_prompts + '</div><div class="sl">Prompts</div></div>' +
+    '<div><div class="sv red">' + run.blocked + '</div><div class="sl">Blocked</div></div>' +
+    '<div><div class="sv green">' + run.passed + '</div><div class="sl">Passed</div></div>' +
+    '<div><div class="sv">' + pct + '%</div><div class="sl">Block Rate</div></div>' +
+    '<div><div class="sv">' + Math.round(run.avg_latency_ms) + 'ms</div><div class="sl">Avg Latency</div></div>' +
+    '</div>';
+
+  events.forEach(function(e) {
+    var viols = [];
+    try { viols = JSON.parse(e.violations || '[]'); } catch(ex) {}
+    var vStr = viols.map(function(v) { return esc(v.detectionName || v.setting || ''); }).join(', ');
+    var bCls = e.verdict === 'block' ? 'b-block' : e.verdict === 'pass' ? 'b-pass' : 'b-monitor';
+    var chk  = e.verdict === e.expected ? '<span class="ok">&#x2713;</span>' : '<span class="fail">&#x2717;</span>';
+    out += '<div class="card">' +
+      '<div class="ph"><span class="lbl">' + esc(e.prompt_label) + '</span>' +
+        chk +
+        '<span class="badge ' + bCls + '">' + (e.verdict || '').toUpperCase() + '</span>' +
+        '<span class="lat">' + (e.latency_ms || 0) + 'ms</span>' +
+      '</div>' +
+      '<div class="pt">' + esc(e.prompt) + '</div>' +
+      (vStr ? '<div class="vi">Violations: ' + vStr + '</div>' : '') +
+      '<div class="rg">' +
+        '<div><div class="rl">REQUEST</div><pre>' + esc(fmtJson(e.raw_request)) + '</pre></div>' +
+        '<div><div class="rl">RESPONSE</div><pre>' + esc(fmtJson(e.raw_response)) + '</pre></div>' +
+      '</div></div>';
+  });
+
+  out += '</body></html>';
+
+  var blob = new Blob([out], { type: 'text/html' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'firewall-report-' + run.prompt_set_id + '-' + (run.ts || '').slice(0, 10) + '.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ── Events ─────────────────────────────────────────────────────────────────────
@@ -1090,35 +1230,74 @@ export function getHtml(): string {
 
 '  <!-- RUNNER -->\n' +
 '  <div id="pane-runner">\n' +
-'    <div class="mb-5 px-4 py-3 bg-gray-900 border border-gray-800 rounded text-sm text-gray-400">\n' +
-'      Select a prompt set below and click <strong class="text-gray-300">Run Set</strong> to send curated prompts through the firewall API. Results compare the expected verdict against the actual verdict returned, and show detected violations with per-request latency.\n' +
-'    </div>\n' +
-'    <div id="sets-grid"></div>\n' +
-'    <div id="run-summary" class="hidden mb-4 card flex items-center gap-6">\n' +
-'      <div class="text-sm font-semibold text-white" id="sum-name"></div>\n' +
-'      <div class="flex items-center gap-1 text-sm">\n' +
-'        <span class="text-green-400 font-semibold" id="sum-pass-n"></span>\n' +
-'        <span class="text-gray-500">passed</span>\n' +
+'    <div id="runner-view">\n' +
+'      <div class="card mb-5">\n' +
+'        <div class="text-sm font-semibold text-gray-300 mb-4">Run Configuration</div>\n' +
+'        <div class="flex gap-4 items-end flex-wrap">\n' +
+'          <div style="flex:1;min-width:220px">\n' +
+'            <label class="text-xs text-gray-400 mb-1 block">Prompt Set</label>\n' +
+'            <select id="run-set-select" style="width:100%"><option value="">Loading sets...</option></select>\n' +
+'          </div>\n' +
+'          <div style="flex:1;min-width:220px">\n' +
+'            <label class="text-xs text-gray-400 mb-1 block">Profile (API Key)</label>\n' +
+'            <select id="run-profile-select" style="width:100%"><option value="">Loading profiles...</option></select>\n' +
+'          </div>\n' +
+'          <button id="run-btn" class="btn-primary" onclick="startRun()" style="white-space:nowrap;align-self:flex-end">Run Set</button>\n' +
+'        </div>\n' +
+'        <div id="run-progress-wrap" class="hidden mt-4">\n' +
+'          <div class="flex items-center justify-between text-xs text-gray-400 mb-1">\n' +
+'            <span id="run-progress-label">Running...</span>\n' +
+'            <span id="run-progress-pct">0%</span>\n' +
+'          </div>\n' +
+'          <div style="background:#1f2937;border-radius:9999px;height:6px">\n' +
+'            <div id="run-progress-bar" style="height:6px;border-radius:9999px;background:#6366f1;width:0%;transition:width .2s"></div>\n' +
+'          </div>\n' +
+'        </div>\n' +
 '      </div>\n' +
-'      <div class="flex items-center gap-1 text-sm">\n' +
-'        <span class="text-red-400 font-semibold" id="sum-fail-n"></span>\n' +
-'        <span class="text-gray-500">failed</span>\n' +
+'      <div class="card">\n' +
+'        <div class="flex items-center justify-between mb-4">\n' +
+'          <div class="text-sm font-semibold text-gray-300">Run History</div>\n' +
+'          <button onclick="loadRunHistory()" class="text-xs text-gray-500 hover:text-gray-300">Refresh</button>\n' +
+'        </div>\n' +
+'        <table class="tbl w-full">\n' +
+'          <thead><tr>\n' +
+'            <th class="text-left" style="width:140px">Time</th>\n' +
+'            <th class="text-left">Set</th>\n' +
+'            <th class="text-left" style="width:150px">Profile</th>\n' +
+'            <th class="text-right" style="width:70px">Prompts</th>\n' +
+'            <th class="text-right" style="width:70px">Blocked</th>\n' +
+'            <th class="text-right" style="width:70px">Passed</th>\n' +
+'            <th class="text-right" style="width:60px">Block%</th>\n' +
+'            <th class="text-right" style="width:70px">Avg ms</th>\n' +
+'            <th class="text-right" style="width:80px">Report</th>\n' +
+'          </tr></thead>\n' +
+'          <tbody id="run-history-body">\n' +
+'            <tr><td colspan="9" class="py-8 text-center text-gray-600">No runs yet - select a set and click Run Set.</td></tr>\n' +
+'          </tbody>\n' +
+'        </table>\n' +
 '      </div>\n' +
-'      <div class="text-gray-500 text-sm" id="sum-latency"></div>\n' +
-'      <div id="sum-spinner" class="hidden"><div class="spinner"></div></div>\n' +
 '    </div>\n' +
-'    <div id="run-results" class="hidden card">\n' +
-'      <table class="tbl w-full">\n' +
-'        <thead><tr>\n' +
-'          <th class="text-left" style="width:35%">Prompt</th>\n' +
-'          <th class="text-left" style="width:80px">Expected</th>\n' +
-'          <th class="text-left" style="width:80px">Actual</th>\n' +
-'          <th class="text-center" style="width:48px">✓/✗</th>\n' +
-'          <th class="text-left">Violations</th>\n' +
-'          <th class="text-right" style="width:72px">Latency</th>\n' +
-'        </tr></thead>\n' +
-'        <tbody id="results-body"></tbody>\n' +
-'      </table>\n' +
+'    <div id="report-view" class="hidden">\n' +
+'      <div class="flex items-center gap-4 mb-5">\n' +
+'        <button onclick="hideReportPage()" class="btn-secondary text-sm">&larr; Back</button>\n' +
+'        <div class="text-sm font-semibold text-gray-200 flex-1 truncate" id="report-title"></div>\n' +
+'        <button onclick="exportReportHtml()" class="btn-primary" style="font-size:12px;white-space:nowrap">Export HTML</button>\n' +
+'      </div>\n' +
+'      <div class="grid grid-cols-5 gap-4 mb-5" id="report-summary-cards"></div>\n' +
+'      <div class="card">\n' +
+'        <table class="tbl w-full">\n' +
+'          <thead><tr>\n' +
+'            <th style="width:24px"></th>\n' +
+'            <th class="text-left" style="width:35%">Prompt</th>\n' +
+'            <th class="text-left" style="width:80px">Expected</th>\n' +
+'            <th class="text-left" style="width:80px">Actual</th>\n' +
+'            <th class="text-center" style="width:40px">Match</th>\n' +
+'            <th class="text-left">Violations</th>\n' +
+'            <th class="text-right" style="width:70px">Latency</th>\n' +
+'          </tr></thead>\n' +
+'          <tbody id="report-body"></tbody>\n' +
+'        </table>\n' +
+'      </div>\n' +
 '    </div>\n' +
 '  </div>\n' +
 

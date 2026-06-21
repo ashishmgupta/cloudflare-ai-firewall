@@ -106,19 +106,20 @@ export interface EventRow {
   country: string | null;
   city: string | null;
   profile_name: string | null;
+  run_id: string | null;
 }
 
 export async function insertEvent(db: D1Database, e: EventRow): Promise<void> {
   await db.prepare(
     `INSERT INTO events
-       (id,ts,prompt_set,prompt_label,prompt,verdict,expected,violations,latency_ms,request_id,raw_request,raw_response,username,ip_address,country,city,profile_name)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (id,ts,prompt_set,prompt_label,prompt,verdict,expected,violations,latency_ms,request_id,raw_request,raw_response,username,ip_address,country,city,profile_name,run_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     e.id, e.ts, e.prompt_set, e.prompt_label, e.prompt, e.verdict,
     e.expected ?? null, e.violations, e.latency_ms, e.request_id ?? null,
     e.raw_request, e.raw_response,
     e.username ?? null, e.ip_address ?? null, e.country ?? null, e.city ?? null,
-    e.profile_name ?? null,
+    e.profile_name ?? null, e.run_id ?? null,
   ).run();
 }
 
@@ -279,4 +280,58 @@ export async function upsertInspectKey(db: D1Database, k: InspectKey): Promise<v
 
 export async function deleteInspectKey(db: D1Database, profileId: string): Promise<void> {
   await db.prepare('DELETE FROM inspect_keys WHERE profile_id = ?').bind(profileId).run();
+}
+
+// ── Run history ───────────────────────────────────────────────────────────────
+
+export interface Run {
+  id: string;
+  ts: string;
+  prompt_set_id: string;
+  prompt_set_name: string;
+  profile_id: string | null;
+  profile_name: string | null;
+  username: string | null;
+  total_prompts: number;
+  blocked: number;
+  monitored: number;
+  passed: number;
+  avg_latency_ms: number;
+}
+
+export async function createRun(db: D1Database, r: Run): Promise<void> {
+  await db.prepare(
+    'INSERT INTO runs (id,ts,prompt_set_id,prompt_set_name,profile_id,profile_name,username,total_prompts,blocked,monitored,passed,avg_latency_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+  ).bind(
+    r.id, r.ts, r.prompt_set_id, r.prompt_set_name,
+    r.profile_id ?? null, r.profile_name ?? null, r.username ?? null,
+    r.total_prompts, r.blocked, r.monitored, r.passed, r.avg_latency_ms,
+  ).run();
+}
+
+export async function updateRunSummary(
+  db: D1Database,
+  runId: string,
+  stats: Pick<Run, 'total_prompts' | 'blocked' | 'monitored' | 'passed' | 'avg_latency_ms'>,
+): Promise<void> {
+  await db.prepare(
+    'UPDATE runs SET total_prompts=?,blocked=?,monitored=?,passed=?,avg_latency_ms=? WHERE id=?',
+  ).bind(stats.total_prompts, stats.blocked, stats.monitored, stats.passed, stats.avg_latency_ms, runId).run();
+}
+
+export async function listRuns(db: D1Database): Promise<Run[]> {
+  const r = await db.prepare('SELECT * FROM runs ORDER BY ts DESC LIMIT 100').all<Run>();
+  return r.results;
+}
+
+export async function getRun(db: D1Database, runId: string): Promise<Run | null> {
+  return db.prepare('SELECT * FROM runs WHERE id = ?').bind(runId).first<Run>();
+}
+
+export async function getRunEvents(db: D1Database, runId: string): Promise<EventRow[]> {
+  const r = await db
+    .prepare('SELECT * FROM events WHERE run_id = ? ORDER BY ts ASC')
+    .bind(runId)
+    .all<EventRow>();
+  return r.results;
 }

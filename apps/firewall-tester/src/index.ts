@@ -8,6 +8,7 @@ import {
   getUserByUsername, listUsers, createUser, updateUser, deleteUser, countUsers,
   createSession, getSession, deleteSession, deleteUserSessions,
   listInspectKeys, getInspectKey, upsertInspectKey, deleteInspectKey,
+  createRun, updateRunSummary, listRuns, getRun, getRunEvents,
 } from './db.js';
 import { hashPassword, generateSalt, generateToken } from './auth.js';
 import { getHtml } from './html.js';
@@ -239,6 +240,28 @@ app.get('/api/inspect-profiles', async c =>
   c.json(await listInspectKeys(c.env.DB)),
 );
 
+// ── All profiles from policy manager, merged with registered keys (admin only) ─
+app.get('/api/pm-profiles', requireAdmin, async c => {
+  const registered = await listInspectKeys(c.env.DB);
+  const registeredMap = new Map(registered.map(k => [k.profile_id, k]));
+
+  try {
+    const res = await fetch(`${c.env.POLICY_MANAGER_URL}/api/profiles`, {
+      headers: { 'Authorization': `Bearer ${c.env.ADMIN_TOKEN}` },
+    });
+    if (!res.ok) throw new Error(`PM returned ${res.status}`);
+    const allProfiles = await res.json() as Array<{ id: string; name: string }>;
+    return c.json(allProfiles.map(p => ({
+      profile_id: p.id,
+      profile_name: p.name,
+      has_key: registeredMap.has(p.id),
+    })));
+  } catch {
+    // Fall back to just the registered keys
+    return c.json(registered.map(k => ({ profile_id: k.profile_id, profile_name: k.profile_name, has_key: true })));
+  }
+});
+
 // ── Cache purge — admin only, proxies DELETE /v1/cache to firewall-api ────────
 app.delete('/api/cache', requireAdmin, async c => {
   const res = await c.env.FIREWALL_API.fetch('https://firewall-api/v1/cache', {
@@ -294,9 +317,13 @@ app.delete('/api/inspect-keys/:profileId', requireAdmin, async c => {
 
 // ── Run an entire prompt set ───────────────────────────────────────────────────
 app.post('/api/run-set', async c => {
-  const { setId } = await c.req.json<{ setId: string }>();
+  const { setId, profileId } = await c.req.json<{ setId: string; profileId: string }>();
   const set = PROMPT_SETS.find(s => s.id === setId);
   if (!set) return c.json({ error: 'Unknown set id' }, 404);
+  if (!profileId) return c.json({ error: 'profileId is required' }, 400);
+
+  const inspectKey = await getInspectKey(c.env.DB, profileId);
+  if (!inspectKey) return c.json({ error: 'No API key registered for this profile' }, 404);
 
   const sessionUser = c.get('user');
   const ip = c.req.header('CF-Connecting-IP')
@@ -310,11 +337,28 @@ app.post('/api/run-set', async c => {
     city:       cf?.city    ?? null,
   };
 
-  const inspectKey = await getInspectKeyByApiKey(c.env.DB, c.env.FIREWALL_API_KEY);
-  const profileName = inspectKey?.profile_name ?? null;
+  const runId = crypto.randomUUID();
+  const runTs = new Date().toISOString();
+
+  await createRun(c.env.DB, {
+    id: runId,
+    ts: runTs,
+    prompt_set_id: setId,
+    prompt_set_name: set.name,
+    profile_id: inspectKey.profile_id,
+    profile_name: inspectKey.profile_name,
+    username: userCtx.username,
+    total_prompts: set.items.length,
+    blocked: 0,
+    monitored: 0,
+    passed: 0,
+    avg_latency_ms: 0,
+  });
 
   const results = await Promise.allSettled(
-    set.items.map(item => runAndStore(item.prompt, setId, item.label, item.expected, c.env, userCtx, profileName)),
+    set.items.map(item =>
+      runAndStore(item.prompt, setId, item.label, item.expected, runId, inspectKey.api_key, c.env, userCtx, inspectKey.profile_name),
+    ),
   );
 
   const mapped = await Promise.all(results.map(async (r, i) => {
@@ -336,7 +380,8 @@ app.post('/api/run-set', async c => {
         raw_request: JSON.stringify({ messages: [{ role: 'user', content: set.items[i].prompt }] }),
         raw_response: JSON.stringify({ error: errMsg }),
         ...userCtx,
-        profile_name: profileName,
+        profile_name: inspectKey.profile_name,
+        run_id: runId,
       });
     } catch (dbErr) {
       console.error('[run-set] D1 insert failed:', String(dbErr));
@@ -353,11 +398,38 @@ app.post('/api/run-set', async c => {
     };
   }));
 
+  const blocked   = mapped.filter(r => r.verdict === 'block').length;
+  const monitored = mapped.filter(r => r.verdict === 'monitor').length;
+  const passed    = mapped.filter(r => r.verdict === 'pass').length;
+  const avgLatency = mapped.reduce((s, r) => s + (r.latencyMs || 0), 0) / (mapped.length || 1);
+
+  await updateRunSummary(c.env.DB, runId, {
+    total_prompts: mapped.length,
+    blocked,
+    monitored,
+    passed,
+    avg_latency_ms: avgLatency,
+  });
+
   return c.json({
+    runId,
     setId,
     results: mapped,
-    summary: { total: mapped.length, passed: mapped.filter(r => r.pass).length },
+    summary: { total: mapped.length, blocked, monitored, passed },
   });
+});
+
+// ── Runs ───────────────────────────────────────────────────────────────────────
+app.get('/api/runs', async c => c.json(await listRuns(c.env.DB)));
+
+app.get('/api/runs/:runId/events', async c => {
+  const runId = c.req.param('runId');
+  const [run, events] = await Promise.all([
+    getRun(c.env.DB, runId),
+    getRunEvents(c.env.DB, runId),
+  ]);
+  if (!run) return c.json({ error: 'Run not found' }, 404);
+  return c.json({ run, events });
 });
 
 // ── Events ─────────────────────────────────────────────────────────────────────
@@ -410,6 +482,8 @@ async function runAndStore(
   promptSet: string,
   promptLabel: string,
   expected: string,
+  runId: string,
+  apiKey: string,
   env: Env,
   userCtx: { username: string | null; ip_address: string | null; country: string | null; city: string | null },
   profileName: string | null = null,
@@ -420,7 +494,7 @@ async function runAndStore(
 
   const res = await env.FIREWALL_API.fetch('https://firewall-api/v1/inspect', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-Key': env.FIREWALL_API_KEY },
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
     body: requestBody,
   });
 
@@ -465,6 +539,7 @@ async function runAndStore(
     }),
     ...userCtx,
     profile_name: profileName,
+    run_id: runId,
   });
 
   return {
