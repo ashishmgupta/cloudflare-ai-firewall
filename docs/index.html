@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloudflare AI Firewall</title>
+  <title>Out-of-Band AI Firewall — Built on Cloudflare</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -298,6 +298,95 @@
     .typ { color: #ffa657; }
     .key { color: #79c0ff; }
 
+    /* ── Out-of-band callout ── */
+    .oob-section {
+      max-width: 960px; margin: 0 auto;
+      padding: 0 40px 80px;
+    }
+
+    .oob-box {
+      background: linear-gradient(135deg, rgba(88,166,255,0.06) 0%, rgba(188,140,255,0.06) 100%);
+      border: 1px solid rgba(88,166,255,0.25);
+      border-radius: 16px;
+      padding: 40px 48px;
+    }
+
+    .oob-eyebrow {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--blue); margin-bottom: 10px;
+    }
+
+    .oob-box h2 {
+      font-size: 26px; font-weight: 700; color: var(--text);
+      margin-bottom: 14px; line-height: 1.3;
+    }
+
+    .oob-box > p {
+      color: var(--muted); font-size: 15px; max-width: 660px; margin-bottom: 32px;
+    }
+
+    .oob-diagram {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 28px;
+    }
+
+    .oob-col { display: flex; flex-direction: column; gap: 10px; }
+
+    .oob-node {
+      background: var(--surf2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 20px; text-align: center;
+    }
+
+    .oob-node-title { font-size: 13px; font-weight: 700; color: var(--text); }
+    .oob-node-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+    .oob-mid {
+      padding: 0 20px;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+
+    .oob-arrow-label {
+      font-size: 10px; color: var(--muted); text-align: center;
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+    }
+
+    .oob-vs {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+
+    .oob-vs-card {
+      background: var(--surf2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 18px 20px;
+    }
+
+    .oob-vs-card h4 { font-size: 12px; font-weight: 700; margin-bottom: 10px; }
+    .oob-vs-card p { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.6; }
+    .oob-bad  { border-color: rgba(247,129,102,0.25); }
+    .oob-bad h4  { color: var(--red); }
+    .oob-good { border-color: rgba(63,185,80,0.3); background: rgba(63,185,80,0.03); }
+    .oob-good h4 { color: var(--green); }
+
+    .cf-only {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border);
+    }
+
+    .cf-only-label {
+      font-size: 12px; font-weight: 600; color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .cf-pill {
+      font-size: 11px; font-weight: 600;
+      background: rgba(247,129,102,0.08);
+      border: 1px solid rgba(247,129,102,0.2);
+      color: var(--orange); padding: 4px 12px; border-radius: 20px;
+    }
+
     /* ── Footer ── */
     footer { border-top: 1px solid var(--border); padding: 40px; text-align: center; }
     footer p { font-size: 13px; color: var(--muted); }
@@ -336,9 +425,9 @@
 
 <!-- Hero -->
 <div class="hero">
-  <div class="hero-badge">&#9889; Built on Cloudflare Workers</div>
-  <h1>AI Firewall<br/>for LLM Applications</h1>
-  <p>An edge-deployed prompt inspection service. Drop it in front of any LLM &mdash; get a structured pass / monitor / block verdict in milliseconds, with MITRE ATLAS attack tagging.</p>
+  <div class="hero-badge">&#9889; 100% Cloudflare Infrastructure &nbsp;&middot;&nbsp; Out-of-Band</div>
+  <h1>Out-of-Band AI Firewall<br/>Built Entirely on Cloudflare</h1>
+  <p>Cloudflare protects your network, your APIs, your DNS &mdash; but there is no native layer that inspects what your users say to your LLM. This fills that gap: a prompt firewall your app calls out-of-band, built exclusively from Cloudflare Workers, KV, R2, D1, Vectorize, and Workers AI.</p>
   <div class="hero-cta">
     <a class="btn btn-primary" href="https://github.com/ashishmgupta/cloudflare-ai-firewall" target="_blank">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.745 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
@@ -349,11 +438,11 @@
     </a>
   </div>
   <div class="chips">
+    <span class="chip"><span class="chip-dot" style="background:var(--blue)"></span> Out-of-Band</span>
+    <span class="chip"><span class="chip-dot" style="background:var(--orange)"></span> 100% Cloudflare Stack</span>
     <span class="chip"><span class="chip-dot" style="background:var(--red)"></span> Prompt Injection</span>
-    <span class="chip"><span class="chip-dot" style="background:var(--orange)"></span> Jailbreak Detection</span>
-    <span class="chip"><span class="chip-dot" style="background:var(--yellow)"></span> PII / Sensitive Data</span>
-    <span class="chip"><span class="chip-dot" style="background:var(--purple)"></span> Content Moderation</span>
-    <span class="chip"><span class="chip-dot" style="background:var(--blue)"></span> MITRE ATLAS Tagged</span>
+    <span class="chip"><span class="chip-dot" style="background:var(--yellow)"></span> Jailbreak Detection</span>
+    <span class="chip"><span class="chip-dot" style="background:var(--purple)"></span> MITRE ATLAS Tagged</span>
     <span class="chip"><span class="chip-dot" style="background:var(--green)"></span> Sub-10ms Cache Path</span>
   </div>
 </div>
@@ -376,6 +465,46 @@
     <div class="stat-item">
       <div class="stat-val" style="color:var(--orange);">49+</div>
       <div class="stat-label">Attack signatures in Vectorize</div>
+    </div>
+  </div>
+</div>
+
+<!-- Out-of-band explainer -->
+<div class="oob-section">
+  <div class="oob-box">
+    <div class="oob-eyebrow">The Missing Piece in Cloudflare</div>
+    <h2>What does out-of-band mean &mdash; and why does it matter?</h2>
+    <p>Cloudflare has a WAF, bot management, DDoS protection, and Zero Trust. None of them understand what a user is saying to your LLM. An <strong style="color:var(--text);">out-of-band</strong> firewall doesn't sit inline as a proxy &mdash; your app calls it as a separate API, gets a verdict, and then decides what to do next.</p>
+
+    <div class="oob-vs">
+      <div class="oob-vs-card oob-bad">
+        <h4>&#10006; In-band proxy</h4>
+        <p>Sits between your app and the LLM. Every request goes through it. Any latency or failure in the proxy directly affects your users. Hard to deploy, hard to bypass for trusted flows.</p>
+        <div style="margin-top:12px;font-size:11px;color:var(--muted);font-family:var(--mono);background:var(--bg);padding:10px;border-radius:6px;line-height:1.8;">
+          Your App &rarr; [Proxy / Firewall] &rarr; LLM<br/>
+          <span style="color:var(--red);">&#9651; single point of failure &middot; added latency on every hop</span>
+        </div>
+      </div>
+      <div class="oob-vs-card oob-good">
+        <h4>&#10003; Out-of-band (this project)</h4>
+        <p>Your app makes one extra API call before sending to the LLM. Gets a verdict. Decides what to do. The firewall is never in the critical path &mdash; you control the flow entirely.</p>
+        <div style="margin-top:12px;font-size:11px;color:var(--muted);font-family:var(--mono);background:var(--bg);padding:10px;border-radius:6px;line-height:1.8;">
+          Your App &mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&rarr; LLM<br/>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#8627; POST /v1/inspect &rarr; <span style="color:var(--green);">verdict</span><br/>
+          <span style="color:var(--green);">&#10003; no single point of failure &middot; you own the logic</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cf-only">
+      <span class="cf-only-label">Built entirely with:</span>
+      <span class="cf-pill">Workers</span>
+      <span class="cf-pill">Workers KV</span>
+      <span class="cf-pill">R2</span>
+      <span class="cf-pill">D1</span>
+      <span class="cf-pill">Vectorize</span>
+      <span class="cf-pill">Workers AI</span>
+      <span style="font-size:12px;color:var(--muted);margin-left:4px;">No AWS. No GCP. No third-party AI APIs. 100% Cloudflare.</span>
     </div>
   </div>
 </div>
