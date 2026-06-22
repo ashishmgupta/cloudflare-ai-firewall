@@ -116,12 +116,13 @@ var SET_NAMES = {
   'security-controls': 'Security Controls',
   'content-moderation':'Content Mod',
   'model-judgment':    'Model Judgment',
+  'vector-bypass':     'L2 Vector Bypass',
   'mitre-atlas':       'MITRE ATLAS',
   'owasp-llm':         'OWASP LLM Top 10',
   'nist-ai-rmf':       'NIST AI RMF',
 };
-var SET_IDS    = ['sensitive-data','security-controls','content-moderation','model-judgment','mitre-atlas','owasp-llm','nist-ai-rmf'];
-var SET_LABELS = ['Sensitive Data','Security Controls','Content Mod','Model Judgment','MITRE ATLAS','OWASP LLM Top 10','NIST AI RMF'];
+var SET_IDS    = ['sensitive-data','security-controls','content-moderation','model-judgment','vector-bypass','mitre-atlas','owasp-llm','nist-ai-rmf'];
+var SET_LABELS = ['Sensitive Data','Security Controls','Content Mod','Model Judgment','L2 Vector Bypass','MITRE ATLAS','OWASP LLM Top 10','NIST AI RMF'];
 
 function latencyFmt(ms) {
   return ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : ms + 'ms';
